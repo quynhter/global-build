@@ -6,7 +6,7 @@
 
 ```bash
 git clone [https://github.com/quynhter/global-build.git](https://github.com/quynhter/global-build.git)
-cd global-stroy
+cd global-build
 
 ```
 
