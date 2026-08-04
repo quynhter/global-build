@@ -51,20 +51,20 @@
 
 ### Frontend
 
-- **[Alpine.js 3.x](https://www.google.com/search?q=https://alpinejs.dev/)** — минималистичный реактивный JavaScript-фреймворк для управления UI-состоянием.
-- **[Tailwind CSS](https://www.google.com/search?q=https://tailwindcss.com/)** — утилитарный CSS-фреймворк для верстки и темного режима.
-- **[Flaticon UIcons](https://www.google.com/search?q=https://www.flaticon.com/uicons)** — вектроные иконки интерфейса.
-- **Google Fonts (Open Sans)** — шрифтовая гарнитура.
+- **[Alpine.js 3.x](https://alpinejs.dev/)** — минималистичный реактивный JavaScript-фреймворк для управления UI-состоянием.
+- **[Tailwind CSS](https://tailwindcss.com/)** — утилитарный CSS-фреймворк для верстки и темного режима.
+- **[Flaticon UIcons](https://www.flaticon.com/uicons/interface-icons)** — вектроные иконки интерфейса.
+- **[Google Fonts (Open Sans)](https://fonts.google.com/specimen/Open+Sans)** — шрифтовая гарнитура.
 
 ### Backend & Database
 
-- **[PocketBase](https://www.google.com/search?q=https://pocketbase.io/)** — ультралегкий Open-Source Go бэкенд (Embedded SQLite, Auth, REST API, JSON fields).
+- **[PocketBase](https://pocketbase.io/)** — ультралегкий Open-Source Go бэкенд (Embedded SQLite, Auth, REST API, JSON fields).
 
 ### Экспорт и импорт
 
-- **[docxtemplater](https://www.google.com/search?q=https://docxtemplater.com/)** & **[PizZip](https://www.google.com/search?q=https://github.com/open-xml-templating/pizzip)** — генерация DOCX-документов по шаблонам на стороне клиента.
-- **[SheetJS (XLSX)](https://www.google.com/search?q=https://sheetjs.com/)** — парсинг файлов Excel/CSV при импорте и выгрузка логов ошибок.
-- **[FileSaver.js](https://www.google.com/search?q=https://github.com/eligrey/FileSaver.js)** — скачивание сгенерированных файлов.
+- **[docxtemplater](https://docxtemplater.com/)** & **[PizZip](https://www.google.com/search?q=https://github.com/open-xml-templating/pizzip)** — генерация DOCX-документов по шаблонам на стороне клиента.
+- **[SheetJS (XLSX)](https://sheetjs.com/)** — парсинг файлов Excel/CSV при импорте и выгрузка логов ошибок.
+- **[FileSaver.js](https://github.com/eligrey/FileSaver.js)** — скачивание сгенерированных файлов.
 
 ## Структура проекта
 
