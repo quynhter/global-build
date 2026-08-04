@@ -135,7 +135,7 @@
         }, 3000);
     </script>
 
-    <!-- Главный Sidebar -->
+    <!-- Основное меню -->
     <template x-if="isAuth">
         <div class="bg-slate-50 dark:bg-slate-800 box-border flex flex-col items-center w-[104px] h-screen p-1 pt-3 pb-3 gap-1 overflow-y-auto border-r border-slate-200 dark:border-slate-700">
 
@@ -215,7 +215,7 @@
         </div>
     </template>
 
-    <!-- Вторичный Sidebar (Подменю) -->
+    <!-- Подменю -->
     <template x-if="isAuth">
         <div 
             x-show="openGroup !== null"
