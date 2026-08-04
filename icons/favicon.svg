@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+    <defs>
+        <!-- Градиент в цветах slate-700 -> slate-900 -->
+        <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#334155" />
+            <stop offset="100%" stop-color="#0f172a" />
+        </linearGradient>
+    </defs>
+
+    <!-- Скругленный фон -->
+    <rect width="512" height="512" rx="110" fill="url(#bg)" />
+
+    <!-- Здание на заднем плане (slate-400) -->
+    <path d="M140 260 h100 v252 h-100 z" fill="#94a3b8" />
+
+    <!-- Здание на переднем плане (slate-50) -->
+    <path d="M260 180 h120 v332 h-120 z" fill="#f8fafc" />
+
+    <!-- Окна левого здания (прозрачность или slate-900) -->
+    <rect x="165" y="300" width="50" height="24" fill="#0f172a" rx="4"/>
+    <rect x="165" y="350" width="50" height="24" fill="#0f172a" rx="4"/>
+    <rect x="165" y="400" width="50" height="24" fill="#0f172a" rx="4"/>
+
+    <!-- Окна правого здания -->
+    <rect x="290" y="230" width="60" height="24" fill="#0f172a" rx="4"/>
+    <rect x="290" y="290" width="60" height="24" fill="#0f172a" rx="4"/>
+    <rect x="290" y="350" width="60" height="24" fill="#0f172a" rx="4"/>
+    <rect x="290" y="410" width="60" height="24" fill="#0f172a" rx="4"/>
+
+    <!-- Башня крана (slate-300) -->
+    <rect x="400" y="100" width="24" height="412" fill="#cbd5e1" />
+
+    <!-- Стрела крана (rose-500) -->
+    <path d="M80 120 h360 v32 h-360 z" fill="#f43f5e" />
+
+    <!-- Трос крана -->
+    <rect x="140" y="152" width="8" height="60" fill="#94a3b8" />
+
+    <!-- Блок/Груз на кране (rose-500) -->
+    <path d="M124 212 h40 v16 h-40 z" fill="#f43f5e" />
+</svg>
