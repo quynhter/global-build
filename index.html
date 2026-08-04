@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Глобал-Строй</title>
+    <link rel="icon" type="image/svg+xml" href="icons/favicon.svg">
+    <!-- Шрифт Open Sans -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Open+Sans:ital,wght@0,300..800;1,300..800&display=swap" rel="stylesheet">
+    <!-- Иконки из папки -->
+    <link href="/icons/css/uicons-solid-rounded.css" rel="stylesheet">
+    
+    <!-- PocketBase SDK -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pocketbase/0.20.3/pocketbase.umd.min.js"></script>
+    
+    <!-- ВНИМАНИЕ: Подключаем библиотеки для экспорта DOCX и CSV -->
+    <script src="https://unpkg.com/pizzip@3.1.7/dist/pizzip.js"></script>
+    <script src="https://unpkg.com/docxtemplater@3.47.3/build/docxtemplater.js"></script>
+    <script src="https://unpkg.com/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+
+    <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
+
+    <!-- AlpineJS и Tailwindcss -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+        }
+    </script>
+    
+    <style>
+        [x-cloak] { display: none !important; }
+        
+        /* 1. Стандартный CSS (Firefox) */
+        * {
+            scrollbar-width: auto;
+            scrollbar-color: #cbd5e1 transparent; /* slate-300 */
+        }
+        .dark * {
+            scrollbar-color: #475569 transparent; /* slate-600 */
+        }
+
+        /* 2. WebKit (Chrome, Edge, Brave, Opera, Safari) */
+        ::-webkit-scrollbar {
+            width: auto;
+            height: auto;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        /* Светлая тема */
+        ::-webkit-scrollbar-thumb {
+            background-color: #cbd5e1; /* slate-300 */
+            border-radius: 9999px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background-color: #94a3b8; /* slate-400 */
+        }
+
+        /* Темная тема */
+        .dark ::-webkit-scrollbar-thumb {
+            background-color: #475569; /* slate-600 */
+        }
+        .dark ::-webkit-scrollbar-thumb:hover {
+            background-color: #64748b; /* slate-500 */
+        }
+
+        /* Изменение курсора, размера и прозрачности иконки */
+        input[type="date"]::-webkit-calendar-picker-indicator {
+            cursor: pointer;
+            border-radius: 6px;
+            padding: 2px;
+            opacity: 0.6;
+            transition: all 0.2s ease;
+        }
+
+        /* Эффект при наведении */
+        input[type="date"]::-webkit-calendar-picker-indicator:hover {
+            opacity: 1;
+            transform: scale(1.1);
+            background-color: rgba(0, 0, 0, 0.05);
+        }
+
+        /* Подстройка цвета иконки под темную тему */
+        .dark input[type="date"]::-webkit-calendar-picker-indicator {
+            filter: invert(0.9); /* Инвертирует черную иконку в белую */
+            opacity: 0.7;
+        }
+
+        .dark input[type="date"]::-webkit-calendar-picker-indicator:hover {
+            filter: invert(1);
+            opacity: 1;
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+    </style>
+</head>
+<body
+    x-data="sidebarMenu"
+    @keyup.escape.window="activeMenu = null; showTableSetting = false; showItemEdit = false; closePasswordWindow();"
+    class="bg-slate-100 dark:bg-slate-900 font-[Open_Sans] text-black dark:text-slate-100 overflow-hidden w-screen h-screen flex flex-row"
+>
+    <!-- Защитный экран -->
+    <div id="app-loader" class="absolute inset-0 z-[1000] flex flex-col items-center justify-center bg-slate-100 dark:bg-slate-900 w-screen h-screen text-slate-500 dark:text-slate-400">
+        
+        <div id="loader-spinner" class="flex flex-col items-center justify-center gap-4">
+            <i class="fi fi-sr-refresh animate-spin text-5xl text-slate-400 dark:text-slate-500 flex justify-center items-center"></i>
+            <span class="text-lg font-medium animate-pulse">Загрузка системы...</span>
+        </div>
+
+        <div id="loader-error" class="hidden flex-col items-center justify-center text-center px-4">
+            <h1 class="text-4xl font-bold text-slate-800 dark:text-slate-100 mb-4">Критическая ошибка</h1>
+            <p class="text-lg text-slate-600 dark:text-slate-300 max-w-2xl">
+                Не удалось загрузить приложение. Похоже, в коде допущена синтаксическая ошибка. Откройте консоль разработчика (F12), чтобы узнать подробности.
+            </p>
+        </div>
+        
+    </div>
+
+    <script>
+        setTimeout(() => {
+            const loader = document.getElementById('app-loader');
+            const spinner = document.getElementById('loader-spinner');
+            const errorMsg = document.getElementById('loader-error');
+            if (loader && spinner && errorMsg) {
+                spinner.classList.add('hidden');
+                errorMsg.classList.remove('hidden');
+                errorMsg.classList.add('flex');
+            }
+        }, 3000);
+    </script>
+
+    <!-- Главный Sidebar -->
+    <template x-if="isAuth">
+        <div class="bg-slate-50 dark:bg-slate-800 box-border flex flex-col items-center w-[104px] h-screen p-1 pt-3 pb-3 gap-1 overflow-y-auto border-r border-slate-200 dark:border-slate-700">
+
+            <button
+                @click.stop="selectMenu('feed'); activeSub = null; openGroup = null; showTableSetting = false; showItemEdit = false; loadFeed(true);"
+                :class="[mainBtn, activeMenu === 'feed' ? 'text-slate-800 dark:text-slate-100 hover:text-slate-800 dark:hover:text-slate-100' : 'text-slate-500 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-200']"
+                id="feed"
+            >
+                <i class="fi fi-sr-time-past text-2xl"></i>
+                <span class="text-[12px]">Лента</span>
+            </button>
+
+            <button
+                @click.stop="openGroup = openGroup === 'contacts' ? null : 'contacts'; showTableSetting = false; showItemEdit = false"
+                :class="[mainBtn, (openGroup === 'contacts' || activeMenu === 'contacts' || activeSub === 'users_list' || activeSub === 'companies_list' || activeSub === 'contacts_list') ? 'text-slate-800 dark:text-slate-100 hover:text-slate-800 dark:hover:text-slate-100' : 'text-slate-500 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-200']"
+                id="contacts"
+            >
+                <i class="fi fi-sr-people-group text-2xl"></i>
+                <span class="text-[12px]">Контакты</span>
+            </button>
+
+            <button 
+                @click.stop="openGroup = openGroup === 'objects' ? null : 'objects'; showTableSetting = false; showItemEdit = false"
+                :class="[mainBtn, (openGroup === 'objects' || activeMenu === 'objects' || activeSub === 'objects_list' || activeSub === 'projects_list') ? 'text-slate-800 dark:text-slate-100 hover:text-slate-800 dark:hover:text-slate-100' : 'text-slate-500 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-200']"
+                id="objects"
+            >
+                <i class="fi fi-sr-crane-building text-2xl"></i>
+                <span class="text-[12px]">Объекты</span>
+            </button>
+
+            <button
+                @click.stop="openGroup = openGroup === 'spec' ? null : 'spec'; showTableSetting = false; showItemEdit = false"
+                :class="[mainBtn, (openGroup === 'spec' || activeMenu === 'spec' || activeSub === 'groups_list' || activeSub === 'materials_list' || activeSub === 'works_list') ? 'text-slate-800 dark:text-slate-100 hover:text-slate-800 dark:hover:text-slate-100' : 'text-slate-500 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-200']"
+                id="spec"
+            >
+                <i class="fi fi-sr-building-materials text-2xl"></i>
+                <span class="text-[12px]">Материалы</span>
+            </button>
+
+            <button
+                @click.stop="openGroup = openGroup === 'journals' ? null : 'journals'; showTableSetting = false; showItemEdit = false"
+                :class="[mainBtn, (openGroup === 'journals' || activeMenu === 'journals' || activeSub === 'inj' || activeSub === 'gwj' || activeSub === 'general_work_log' || activeSub === 'doc_status_log' || activeSub === 'work_progress_report') ? 'text-slate-800 dark:text-slate-100 hover:text-slate-800 dark:hover:text-slate-100' : 'text-slate-500 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-200']"
+                id="journals"
+            >
+                <i class="fi fi-sr-book-bookmark text-2xl"></i>
+                <span class="text-[12px]">Журналы</span>
+            </button>
+
+            <button
+                @click.stop="openGroup = openGroup === 'graphics' ? null : 'graphics'; showTableSetting = false; showItemEdit = false"
+                :class="[mainBtn, (openGroup === 'graphics' || activeMenu === 'graphics' || activeSub === 'gpr') ? 'text-slate-800 dark:text-slate-100 hover:text-slate-800 dark:hover:text-slate-100' : 'text-slate-500 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-200']"
+                id="graphics"
+            >
+                <i class="fi fi-sr-chart-bullet text-2xl"></i>
+                <span class="text-[12px]">Графики</span>
+            </button>
+
+            <div class="h-full"></div>
+
+            <button
+                @click.stop="toggleTheme()"
+                :class="[mainBtn, 'text-slate-500 hover:text-slate-600 dark:text-slate-400 dark:hover:text-slate-200']"
+                title="Сменить тему"
+            >
+                <i class="text-2xl" :class="isDark ? 'fi fi-sr-moon' : 'fi fi-sr-sun'"></i>
+                <span class="text-[12px]" x-text="isDark ? 'Темная' : 'Светлая'"></span>
+            </button>
+
+            <button
+                @click.stop="selectMenu('about'); activeSub = null; openGroup = null; showTableSetting = false; showItemEdit = false"
+                :class="[mainBtn, activeMenu === 'about' ? 'text-slate-800 dark:text-slate-100 hover:text-slate-800 dark:hover:text-slate-100' : 'text-slate-500 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-200']"
+                id="user"
+            >
+                <i class="fi fi-sr-circle-user text-2xl"></i>
+                <span class="text-[12px]">Обо мне</span>
+            </button>
+        </div>
+    </template>
+
+    <!-- Вторичный Sidebar (Подменю) -->
+    <template x-if="isAuth">
+        <div 
+            x-show="openGroup !== null"
+            @click.outside="openGroup = null"
+            x-transition 
+            x-cloak 
+            class="bg-slate-50 dark:bg-slate-800 box-border flex flex-col w-[300px] h-screen p-4 gap-2 overflow-y-auto border-r border-slate-200 dark:border-slate-700 absolute left-[104px] top-0 z-[10] shadow-xl"
+        >
+            <div class="flex flex-row justify-between items-center w-full border-b border-slate-200 dark:border-slate-700 pb-2">
+                <span class="text-slate-700 dark:text-slate-200 text-lg font-semibold">Меню</span>
+                <button @click="openGroup = null" class="text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 outline-none transition-colors"><span class="fi fi-sr-cross"></span></button>
+            </div>
+
+            <!-- Разделы меню... -->
+            <div x-show="openGroup === 'contacts'" class="flex flex-col gap-2 w-full">
+                <button @click="selectSub('companies_list')" :class="[subBtn, activeSub === 'companies_list' ? subBtnActive : subBtnNormal]">Компании</button>
+                <button @click="selectSub('contacts_list')" :class="[subBtn, activeSub === 'contacts_list' ? subBtnActive : subBtnNormal]">Контакты</button>
+                <button @click="selectSub('users_list')" :class="[subBtn, activeSub === 'users_list' ? subBtnActive : subBtnNormal]">Пользователи</button>
+            </div>
+
+            <div x-show="openGroup === 'objects'" class="flex flex-col gap-2 w-full">
+                <button @click="selectSub('objects_list')" :class="[subBtn, activeSub === 'objects_list' ? subBtnActive : subBtnNormal]">Объекты</button>
+                <button @click="selectSub('projects_list')" :class="[subBtn, activeSub === 'projects_list' ? subBtnActive : subBtnNormal]">Проекты</button>
+            </div>
+
+            <div x-show="openGroup === 'spec'" class="flex flex-col gap-2 w-full">
+                <button @click="selectSub('groups_list')" :class="[subBtn, activeSub === 'groups_list' ? subBtnActive : subBtnNormal]">Группы</button>
+                <button @click="selectSub('materials_list')" :class="[subBtn, activeSub === 'materials_list' ? subBtnActive : subBtnNormal]">Материалы</button>
+            </div>
+
+            <div x-show="openGroup === 'journals'" class="flex flex-col gap-2 w-full">
+                <button @click="selectSub('inj')" :class="[subBtn, activeSub === 'inj' ? subBtnActive : subBtnNormal]">Журнал входного контроля</button>
+                <button @click="selectSub('work_progress_report')" :class="[subBtn, activeSub === 'work_progress_report' ? subBtnActive : subBtnNormal]">Журнал расхода материалов</button>
+                <button @click="selectSub('doc_status_log')" :class="[subBtn, activeSub === 'doc_status_log' ? subBtnActive : subBtnNormal]">Журнал движения ИТД</button>
+                <button @click="selectSub('general_work_log')" :class="[subBtn, activeSub === 'general_work_log' ? subBtnActive : subBtnNormal]">Общий журнал работ</button>
+            </div>
+
+            <div x-show="openGroup === 'graphics'" class="flex flex-col gap-2 w-full">
+                <button @click="selectSub('gpr')" :class="[subBtn, activeSub === 'gpr' ? subBtnActive : subBtnNormal]">График производства работ</button>
+            </div>
+        </div>
+    </template>
+
+    <!-- Контейнер для контента -->
+    <div
+        class="box-border flex flex-col flex-1 min-w-0 text-slate-500 dark:text-slate-400 text-md relative"
+        @click="if (activeMenu !== 'about' && activeMenu !== 'feed') activeMenu = null; showTableSetting = false; showItemEdit = false;"
+    >
+
+        <div class="box-border flex flex-row items-center m-2 gap-2 overflow-x-auto">
+            <span class="text-2xl text-nowrap text-slate-800 dark:text-slate-100 font-semibold" x-text="currentTitle"></span>
+            
+            <div class="flex w-full"></div>
+
+            <input type="file" id="importFileInput" accept=".csv, .xlsx" class="hidden" @change="handleImportFile($event)">
+
+            <button x-show="activeSub != null && isAuth === true && hasAccess('import_export')" @click="document.getElementById('importFileInput').click()" :class="anyBtn">
+                <span class="fi fi-sr-file-import flex items-center"></span><span class="text-nowrap">Импорт</span>
+            </button>
+
+            <button @click="exportData()" x-show="activeSub != null && isAuth === true" :disabled="isExporting" :class="[anyBtn, 'disabled:opacity-70 disabled:cursor-not-allowed']">
+                <span x-show="!isExporting" class="fi fi-sr-file-export flex items-center"></span>
+                <i x-show="isExporting" x-cloak class="fi fi-sr-refresh animate-spin flex items-center"></i>
+                <span class="text-nowrap" x-text="isExporting ? 'Экспорт...' : 'Экспорт'"></span>
+            </button>
+
+            <button x-show="activeSub != null && isAuth === true" @click.stop="openEdit(null)" :disabled="loadingEditId === 'new'" :class="[anyBtn, 'disabled:opacity-70 disabled:cursor-not-allowed']">
+                <span x-show="loadingEditId !== 'new'" class="fi fi-sr-plus-small flex items-center"></span>
+                <i x-show="loadingEditId === 'new'" x-cloak class="fi fi-sr-refresh animate-spin flex items-center"></i>
+                <span class="text-nowrap" x-text="loadingEditId === 'new' ? 'Загрузка...' : 'Новая запись'"></span>
+            </button>
+        </div>
+
+        <!-- Поисковая строка -->
+        <div x-show="(activeSub != null || activeMenu === 'feed') && isAuth === true" class="box-border flex bg-slate-200 dark:bg-slate-800 rounded-full px-3 py-2 m-2 gap-2">
+            <!-- Иконки поиска и загрузки -->
+            <i x-show="!isSearching" class="fi fi-sr-global-research flex justify-center items-center text-xl w-5 text-slate-500 dark:text-slate-400"></i>
+            <i x-show="isSearching" x-cloak class="fi fi-sr-refresh animate-spin flex justify-center items-center text-xl w-5 text-slate-500 dark:text-slate-400"></i>
+            
+            <input type="text" x-model="searchInput" autocomplete="off" @keydown.enter="executeSearch()" @keyup.escape.stop="$el.blur()" :disabled="isSearching" placeholder="Начните ввод..." class="box-border flex items-center justify-center self-center w-full px-3.5 py-1 outline-none text-md rounded-full bg-transparent text-slate-700 dark:text-slate-200 hover:bg-slate-50/50 dark:hover:bg-slate-700/50 focus:bg-slate-50 dark:focus:bg-slate-700 transition-all duration-200 disabled:opacity-70 disabled:cursor-not-allowed placeholder:text-slate-400 dark:placeholder:text-slate-500">
+            
+            <button x-show="searchInput !== '' && searchInput !== searchQuery" x-transition.duration.200ms @click="executeSearch()" :disabled="isSearching" class="transition-colors hover:text-slate-700 dark:hover:text-slate-200 text-nowrap disabled:opacity-50 disabled:cursor-not-allowed">Поиск</button>
+            <button x-show="searchQuery !== '' || searchInput !== ''" x-transition.duration.200ms @click="clearSearch()" :disabled="isSearching" class="transition-colors hover:text-rose-700 dark:hover:text-rose-400 text-nowrap disabled:opacity-50 disabled:cursor-not-allowed">Очистить</button>
+        </div>
+
+        <div x-show="activeSub != null && isAuth === true" class="box-border flex-1 min-w-0 min-h-0 bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-700 overflow-auto thin-scroll">
+            
+            <table :class="tableStatus !== 'loaded' ? 'h-full' : ''" class="w-full border-separate border-spacing-0 min-w-max relative text-sm text-slate-800 dark:text-slate-200 text-left">
+                
+                <thead class="sticky top-0 z-[2] bg-slate-50 dark:bg-slate-800 select-none">
+                    <tr>
+                        <th x-show="tableStatus === 'loaded'" class="sticky left-0 top-0 z-[3] bg-slate-50 dark:bg-slate-800 p-2 w-12 text-center border-r border-b border-slate-200 dark:border-slate-700">
+                            <input type="checkbox" @change="selectedRows = $el.checked ? [...currentData] : []" :checked="currentData.length > 0 && currentData.every(r => selectedRows.indexOf(r) > -1)" class="rounded border-slate-300 dark:border-slate-600 dark:bg-slate-700 cursor-pointer text-slate-800 dark:text-slate-200 focus:ring-slate-400">
+                        </th>
+                        <template x-for="(col, index) in currentColumns" :key="col.key">
+                            <th @click="toggleSort(col.key)" :class="[col.width, index === currentColumns.length - 1 ? 'border-r-0' : 'border-r']" class="sticky top-0 z-[2] bg-slate-50 dark:bg-slate-800 p-2 uppercase text-center tracking-wider border-b border-slate-200 dark:border-slate-700 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors group select-none text-xs">
+                                <div class="flex items-center justify-center gap-2">
+                                    <span x-text="col.label"></span>
+                                    <div class="flex flex-col text-[10px] leading-none text-slate-300 dark:text-slate-600">
+                                        <i class="fi fi-sr-angle-small-up translate-y-[2px]" :class="(userSortKey === col.key && userSortDir === 'asc') ? 'text-slate-800 dark:text-slate-100' : 'opacity-0 group-hover:opacity-100'"></i>
+                                        <i class="fi fi-sr-angle-small-down -translate-y-[2px]" :class="(userSortKey === col.key && userSortDir === 'desc') ? 'text-slate-800 dark:text-slate-100' : 'opacity-0 group-hover:opacity-100'"></i>
+                                    </div>
+                                </div>
+                            </th>
+                        </template>
+                        <th x-show="tableStatus === 'loaded' || tableStatus === 'empty'" class="sticky right-0 top-0 z-[3] bg-slate-50 dark:bg-slate-800 p-2 w-12 text-center border-l border-b border-slate-200 dark:border-slate-700 text-sm">
+                            <span :class="isFilterActive ? 'fi fi-sr-light-mode-alt text-slate-800 dark:text-slate-100 font-medium' : 'fi fi-sr-settings text-slate-500 dark:text-slate-400'" class="flex justify-center items-center tracking-wider cursor-pointer" @click.stop="openTableSettings()"></span>
+                        </th>
+                    </tr>
+                </thead>
+                <tbody class="bg-slate-50 dark:bg-slate-900" :class="tableStatus !== 'loaded' ? 'h-full' : ''">
+                    <template x-if="tableStatus === 'loading'">
+                        <tr class="h-full">
+                            <td colspan="100%" class="p-0 border-b border-slate-200 dark:border-slate-700 h-full">
+                                <div class="flex flex-col items-center justify-center w-full h-full min-h-[300px] text-slate-400 dark:text-slate-500 gap-4 bg-white dark:bg-slate-800">
+                                    <i class="fi fi-sr-refresh animate-spin text-4xl text-slate-300 dark:text-slate-600 flex justify-center items-center text-center"></i>
+                                    <span class="text-sm font-medium">Загрузка данных...</span>
+                                </div>
+                            </td>
+                        </tr>
+                    </template>
+                    <template x-if="tableStatus === 'placeholder'">
+                        <tr class="h-full">
+                            <td colspan="100%" class="p-0 border-b border-slate-200 dark:border-slate-700 h-full">
+                                <div class="flex flex-col items-center justify-center w-full h-full min-h-[300px] text-slate-400 dark:text-slate-500 gap-3 bg-white dark:bg-slate-800">
+                                    <span class="fi fi-sr-settings-sliders text-4xl flex justify-center items-center"></span>
+                                    <span class="text-sm font-medium">Раздел в разработке</span>
+                                </div>
+                            </td>
+                        </tr>
+                    </template>
+                    <template x-if="tableStatus === 'empty'">
+                        <tr class="h-full">
+                            <td colspan="100%" class="p-0 border-b border-slate-200 dark:border-slate-700 h-full">
+                                <div class="flex flex-col items-center justify-center w-full h-full min-h-[300px] text-slate-400 dark:text-slate-500 gap-3 bg-white dark:bg-slate-800">
+                                    <span class="fi fi-sr-box-open text-4xl"></span>
+                                    <span class="text-sm font-medium">Нет данных для отображения</span>
+                                </div>
+                            </td>
+                        </tr>
+                    </template>
+                    <template x-if="tableStatus === 'loaded'">
+                        <template x-for="row in currentData" :key="row.id">
+                            <tr class="group">
+                                <td class="sticky left-0 z-[1] bg-slate-50 dark:bg-slate-800 p-2 text-center border-b border-slate-200 dark:border-slate-700 border-r group-hover:bg-slate-200 dark:group-hover:bg-slate-700 group-hover:border-r-slate-400 dark:group-hover:border-r-slate-500 transition-colors">
+                                    <input type="checkbox" :checked="selectedRows.indexOf(row) > -1" @change="$el.checked ? selectedRows.push(row) : selectedRows.splice(selectedRows.indexOf(row), 1)" class="rounded border-slate-300 dark:border-slate-600 dark:bg-slate-700 cursor-pointer text-slate-800 dark:text-slate-200 focus:ring-slate-400">
+                                </td>
+                                <template x-for="(col, colIndex) in currentColumns" :key="col.key">
+                                    <td class="p-2 border-b border-slate-200 dark:border-slate-700 transition-colors group-hover:bg-slate-200 dark:group-hover:bg-slate-700/70" :class="[col.width, colIndex === currentColumns.length - 1 ? 'border-r-0 group-hover:border-r-0' : 'border-r group-hover:border-r-slate-400 dark:group-hover:border-r-slate-500']">
+                                        <div class="line-clamp-2 break-words text-slate-700 dark:text-slate-200" x-text="formatValue(row[col.key], col.format)"></div>
+                                    </td>
+                                </template>
+                                <td class="sticky right-0 z-[1] bg-slate-50 dark:bg-slate-800 p-2 text-center border-b border-slate-200 dark:border-slate-700 border-l group-hover:bg-slate-200 dark:group-hover:bg-slate-700 group-hover:border-l-slate-400 dark:group-hover:border-l-slate-500 transition-colors">
+                                    <div class="inline-flex gap-2 text-slate-500 dark:text-slate-400">
+                                        <span x-show="loadingEditId !== row.id" @click.stop="openEdit(row)" class="fi fi-sr-arrow-small-right flex items-center text-xl cursor-pointer hover:text-slate-800 dark:hover:text-slate-100 transition-colors"></span>
+                                        <i x-show="loadingEditId === row.id" x-cloak class="fi fi-sr-refresh animate-spin flex items-center"></i>
+                                    </div>
+                                </td>
+                            </tr>
+                        </template>
+                    </template>
+                </tbody>
+                <tfoot class="sticky bottom-0 z-[2] bg-slate-50 dark:bg-slate-800 select-none text-sm">
+                    <tr>
+                        <td x-show="tableStatus === 'loaded'" class="sticky left-0 bottom-0 z-[3] bg-slate-50 dark:bg-slate-800 p-2 border-r border-t border-b border-slate-200 dark:border-slate-700"></td>
+                        <template x-for="(col, index) in currentColumns" :key="col.key">
+                            <td :class="[col.width, index === currentColumns.length - 1 ? 'border-r-0' : 'border-r']" class="sticky bottom-0 z-[2] bg-slate-50 dark:bg-slate-800 p-2 border-t border-b border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300">
+                                <template x-if="index === 0 && tableStatus === 'loaded'">
+                                    <div>Всего: <span x-text="totalItems"></span></div>
+                                </template>
+                            </td>
+                        </template>
+                        <td x-show="tableStatus === 'loaded' || tableStatus === 'empty'" class="sticky right-0 bottom-0 z-[3] bg-slate-50 dark:bg-slate-800 p-2 border-l border-t border-b border-slate-200 dark:border-slate-700"></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+        
+        <div x-show="selectedRows.length > 0" x-transition x-cloak class="absolute bottom-16 inset-x-0 mx-auto z-[5] box-border flex flex-row items-center gap-5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl rounded-xl px-4 py-2.5 min-w-[320px] w-max justify-between">
+            <span class="text-sm font-medium text-slate-700 dark:text-slate-300 select-none">Выбрано строк: <span class="font-bold text-slate-900 dark:text-slate-100" x-text="selectedRows.length"></span></span>
+            <div class="flex flex-row gap-2">
+                <button @click="selectedRows = []" :class="[anyBtn, 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-600 py-1 text-sm font-medium']">Сбросить</button>
+                <button @click="attemptDelete()" :class="[anyBtn, 'bg-rose-100 dark:bg-rose-900/50 text-rose-700 dark:text-rose-300 hover:bg-slate-50 dark:hover:bg-rose-900/80 py-1 text-sm font-semibold']">
+                    <i class="fi fi-sr-trash flex justify-center items-center text-sm"></i><span>Удалить</span>
+                </button>
+            </div>
+        </div>
+
+        <div x-show="activeSub != null && isAuth === true && tableStatus === 'loaded'" class="box-border flex flex-row items-center justify-between px-4 py-2 bg-slate-50 dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 text-sm select-none">
+            <div class="flex items-center gap-2">
+                <span class="text-slate-500 dark:text-slate-400">Показывать по:</span>
+                <select x-model="perPage" class="box-border px-2 py-1 text-sm bg-transparent dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded outline-none cursor-pointer text-slate-700 dark:text-slate-200 transition-all focus:ring-1 focus:ring-slate-400">
+                    <option value="10">10</option>
+                    <option value="25">25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                </select>
+            </div>
+            <div class="flex items-center gap-4">
+                <div class="flex items-center gap-2 text-slate-500 dark:text-slate-400">
+                    <span>Страница</span>
+                    <!-- Поле ввода номера страницы -->
+                    <input 
+                        type="text" 
+                        :value="currentPage" 
+                        @change="goToPage($event.target.value); $el.value = currentPage"
+                        @keydown.enter="$el.blur()"
+                        class="box-border w-12 px-1 py-0.5 text-center text-sm font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded outline-none focus:ring-1 focus:ring-slate-400 transition-all"
+                    >
+                    <span>из <span class="font-semibold text-slate-700 dark:text-slate-200" x-text="totalPages"></span></span>
+                </div>
+                <div class="flex gap-1">
+                    <!-- Кнопка ВЛЕВО -->
+                    <button @click="prevPage()" :disabled="currentPage === 1 || isPaginatingLeft || isPaginatingRight" :class="anyBtn" class="px-2 py-1 text-xs disabled:opacity-40 disabled:cursor-not-allowed transition-opacity w-8 flex justify-center items-center">
+                        <i x-show="!isPaginatingLeft" class="fi fi-sr-angle-left flex items-center text-xs"></i>
+                        <i x-show="isPaginatingLeft" x-cloak class="fi fi-sr-refresh animate-spin flex items-center text-xs"></i>
+                    </button>
+
+                    <!-- Кнопка ВПРАВО -->
+                    <button @click="nextPage()" :disabled="currentPage === totalPages || isPaginatingLeft || isPaginatingRight" :class="anyBtn" class="px-2 py-1 text-xs disabled:opacity-40 disabled:cursor-not-allowed transition-opacity w-8 flex justify-center items-center">
+                        <i x-show="!isPaginatingRight" class="fi fi-sr-angle-right flex items-center text-xs"></i>
+                        <i x-show="isPaginatingRight" x-cloak class="fi fi-sr-refresh animate-spin flex items-center text-xs"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Лента -->
+        <div x-show="activeMenu === 'feed' && isAuth === true" class="box-border flex-1 min-w-0 min-h-0 bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-700 overflow-y-auto thin-scroll flex flex-col items-center">
+            <div class="flex flex-col w-full max-w-3xl pb-10 pt-4 gap-4 px-2">
+                
+                <div class="flex flex-row flex-wrap items-center justify-between gap-3 p-4 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm w-full transition-all hover:shadow-md">
+                    <div class="flex items-center gap-2 text-slate-600 dark:text-slate-300">
+                        <i class="fi fi-sr-calendar text-xl text-slate-400 flex items-center"></i>
+                        <span class="text-md">Период отображения:</span>
+                    </div>
+                    <div class="flex flex-row items-center gap-2 flex-1 min-w-[250px]">
+                        <input type="date" x-model="feedDateFrom" @change="loadFeed(true)" :class="[anyInput, 'py-1.5 flex-1']">
+                        <span class="text-slate-400">—</span>
+                        <input type="date" x-model="feedDateTo" @change="loadFeed(true)" :class="[anyInput, 'py-1.5 flex-1']">
+                    </div>
+                </div>
+
+                <div x-show="isFeedLoading && feedData.length === 0" class="flex flex-col items-center justify-center w-full min-h-[300px] text-slate-400 dark:text-slate-500 gap-4 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                    <i class="fi fi-sr-refresh animate-spin text-4xl text-slate-300 dark:text-slate-600 flex justify-center items-center text-center"></i>
+                    <span class="text-sm font-medium">Загрузка ленты...</span>
+                </div>
+
+                <template x-for="item in processedFeedData" :key="item.id">
+                    <div class="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col gap-3 text-slate-700 dark:text-slate-300 text-sm transition-all hover:shadow-md">
+                        <div class="flex justify-between items-center border-b border-slate-100 dark:border-slate-700 pb-2">
+                            <span class="font-bold text-slate-800 dark:text-slate-100 text-md" x-text="item.typeTitle"></span>
+                            <span class="text-slate-400 dark:text-slate-300 text-xs font-medium bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-md" x-text="item.dateFormatted"></span>
+                        </div>
+                        <div class="whitespace-pre-line leading-relaxed" x-html="item.content"></div>
+                    </div>
+                </template>
+
+                <div x-show="processedFeedData.length === 0 && !isFeedLoading" class="text-center text-slate-400 dark:text-slate-500 py-10 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                    <i class="fi fi-sr-box-open text-4xl mb-2 block"></i>
+                    Нет записей для отображения.
+                </div>
+
+                <button x-show="feedHasMore && processedFeedData.length > 0 && searchQuery === ''" @click="loadFeed(false)" :disabled="isFeedLoading" :class="[anyBtn, 'w-full bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 py-3 mt-2 shadow-sm rounded-xl text-slate-600 dark:text-slate-300 font-semibold disabled:opacity-70']">
+                    <i x-show="isFeedLoading" x-cloak class="fi fi-sr-refresh animate-spin flex items-center"></i>
+                    <span x-text="isFeedLoading ? 'Загрузка...' : 'Загрузить более старые записи'"></span>
+                </button>
+
+                <!-- Подсказка о поиске -->
+                <div x-show="searchQuery !== '' && feedHasMore" class="text-center text-slate-400 text-xs mt-2 px-4">
+                    Показаны результаты поиска по уже загруженным записям. Чтобы найти более старые события, очистите строку поиска и прогрузите ленту дальше.
+                </div>
+            </div>
+        </div>
+
+        <!-- Обо мне -->
+        <div x-show="activeMenu === 'about' && isAuth === true" class="box-border flex-1 min-w-0 min-h-0 bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-700 overflow-y-auto thin-scroll flex flex-col items-center p-4">
+            <div class="flex flex-col w-full max-w-3xl gap-4 mt-4">
+                <div class="flex flex-row items-center gap-4 bg-white dark:bg-slate-800 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm w-full overflow-x-auto text-nowrap transition-all hover:shadow-md">
+                    <div class="w-20 min-w-20 h-20 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-200 text-4xl font-semibold shadow-inner border border-slate-300 dark:border-slate-600 select-none">
+                        <span x-text="userInitial"></span>
+                    </div>
+                    <div class="flex flex-col flex-1">
+                        <span class="text-2xl font-semibold text-slate-800 dark:text-slate-100" x-text="userFullName"></span>
+                        <div class="flex flex-row items-center text-md gap-2">
+                            <span class="text-slate-500 dark:text-slate-400">Должность:</span>
+                            <span class="text-slate-500 dark:text-slate-400" x-text="currentUser.position || 'Должность не указана'"></span>
+                        </div>
+                        <div class="flex flex-row items-center text-md gap-2">
+                            <span class="text-slate-500 dark:text-slate-400">Почта:</span>
+                            <span class="text-slate-500 dark:text-slate-400" x-text="currentUser.email || 'Email не указан'"></span>
+                        </div>
+                        <div class="flex flex-row items-center text-md gap-2">
+                            <span class="text-slate-500 dark:text-slate-400">Идентификатор:</span>
+                            <span class="text-slate-500 dark:text-slate-400" x-text="currentUser.id"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex flex-row gap-4 w-full justify-center mt-2">
+                    <button @click="openPasswordWindow()" :class="[anyBtn, 'bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 px-4 justify-center shadow-sm rounded-xl py-2']">
+                        <i class="fi fi-sr-lock flex items-center"></i><span>Сменить пароль</span>
+                    </button>
+                    <button @click="openDialog('Выход из системы', 'Вы уверены, что хотите выйти из профиля?', 'confirm', () => logout())" :class="[anyBtn, 'bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300 hover:bg-slate-50 dark:hover:bg-rose-900/60 px-4 justify-center shadow-sm rounded-xl py-2']">
+                        <i class="fi fi-sr-exit flex items-center"></i><span>Выйти из аккаунта</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Контейнер для настройки таблицы -->
+    <div x-show="showTableSetting === true" x-transition class="absolute z-[7] right-0 w-[400px] h-full bg-slate-50 dark:bg-slate-800 box-border flex flex-col border-l border-slate-200 dark:border-slate-700 p-4 gap-4 shadow-xl">
+        <div class="flex flex-row justify-between items-center w-full border-b border-slate-200 dark:border-slate-700 pb-3">
+            <span class="text-slate-700 dark:text-slate-200 text-lg font-semibold">Настройки таблицы</span>
+            <button @click="showTableSetting = false" class="text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 outline-none transition-colors"><span class="fi fi-sr-cross"></span></button>
+        </div>
+        <div class="flex flex-col gap-3 overflow-y-auto thin-scroll flex-1 pr-1">
+            <template x-for="(col, index) in columnsConfig[activeSub]" :key="col.key">
+                <div class="flex flex-col gap-3 p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg shadow-sm">
+                    <div class="flex flex-row items-center justify-between">
+                        <span class="text-sm font-semibold text-slate-700 dark:text-slate-200" x-text="col.label"></span>
+                        <label class="flex items-center gap-2 cursor-pointer select-none text-sm text-slate-600 dark:text-slate-400">
+                            <input type="checkbox" x-model="col.visible" :disabled="col.visible && currentColumns.length <= 1" class="rounded border-slate-300 dark:border-slate-600 dark:bg-slate-800 cursor-pointer text-slate-800 dark:text-slate-200 focus:ring-slate-400 disabled:opacity-50 disabled:cursor-not-allowed">
+                            <span>Отображать</span>
+                        </label>
+                    </div>
+                    <div class="flex flex-col gap-2">
+                        <select x-model="col.draftFilterType" class="box-border w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg outline-none cursor-pointer text-slate-700 dark:text-slate-200 transition-all focus:ring-1 focus:ring-slate-200 focus:border-slate-400">
+                            <option value="contains">Содержит</option>
+                            <option value="equals">Равно</option>
+                            <option value="not_empty">Не пусто</option>
+                            <option value="less" x-show="['number', 'date', 'computed', 'formula'].includes(col.type) || col.format === 'date'">Меньше</option>
+                            <option value="greater" x-show="['number', 'date', 'computed', 'formula'].includes(col.type) || col.format === 'date'">Больше</option>
+                        </select>
+                        <input x-show="col.draftFilterType !== 'not_empty'" type="text" x-model="col.draftFilterValue" @keydown.enter="applyFilters()" placeholder="Введите значение..." :class="[anyInput, 'border-slate-200 dark:border-slate-700 focus:border-slate-400 dark:focus:border-slate-500']">
+                    </div>
+                </div>
+            </template>
+        </div>
+        <div class="flex flex-row justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-700">
+            <button @click="clearFilters()" :disabled="isFiltering" :class="[anyBtn, 'px-6 disabled:opacity-70 disabled:cursor-not-allowed']">
+                Очистить
+            </button>
+            <button @click="applyFilters()" :disabled="isFiltering" :class="[anyBtn, 'bg-white dark:bg-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 px-6 disabled:opacity-70 disabled:cursor-not-allowed flex items-center gap-2']">
+                <i x-show="isFiltering" x-cloak class="fi fi-sr-refresh animate-spin flex justify-center items-center"></i>
+                <span x-text="isFiltering ? 'Применение...' : 'Применить'"></span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Окно редактирования -->
+    <div x-show="showItemEdit === true" x-transition class="absolute z-[8] right-0 w-[500px] h-full bg-slate-50 dark:bg-slate-800 box-border flex flex-col border-l border-slate-200 dark:border-slate-700 shadow-xl" @click.stop>
+        <div class="flex flex-row justify-between items-center w-full border-b border-slate-200 dark:border-slate-700 p-4 pb-3 bg-white dark:bg-slate-900">
+            <span class="text-slate-700 dark:text-slate-200 text-lg font-semibold" x-text="isCreating ? 'Новая запись' : 'Редактирование элемента'"></span>
+            <button @click="showItemEdit = false" class="text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 outline-none transition-colors"><span class="fi fi-sr-cross"></span></button>
+        </div>
+        <div class="flex flex-col gap-4 p-4 overflow-y-auto thin-scroll flex-1">
+            <template x-if="editingItem">
+                <template x-for="field in currentEditSchema" :key="field.key">
+                    <template x-if="!(isCreating && field.hideOnCreate) && !(!isCreating && field.hideOnEdit)">
+                        <div class="flex flex-col gap-1.5 w-full">
+                            <template x-if="field.type !== 'repeating_group'">
+                                <span class="text-sm font-medium text-slate-600 dark:text-slate-300">
+                                    <span x-text="field.label"></span>
+                                    <span x-show="field.required" class="text-rose-500 ml-0.5">*</span>
+                                </span>
+                            </template>
+
+                            <template x-if="['text', 'date', 'email', 'password'].includes(field.type)">
+                                <input 
+                                    :type="field.type" 
+                                    x-model="editingItem[field.key]" 
+                                    :disabled="field.locked"
+                                    :class="[anyInput, field.locked ? 'bg-slate-100 dark:bg-slate-900 opacity-60 cursor-not-allowed text-slate-500 dark:text-slate-400' : 'border-slate-200 dark:border-slate-700 focus:border-slate-400 dark:focus:border-slate-500']" 
+                                    :placeholder="field.locked ? '' : 'Введите значение...'">
+                            </template>
+
+                            <template x-if="field.type === 'number'">
+                                <input 
+                                    type="text" 
+                                    x-model="editingItem[field.key]" 
+                                    :disabled="field.locked"
+                                    @focus="if(field.format !== 'raw' && !field.locked) editingItem[field.key] = parseNumber(editingItem[field.key])" 
+                                    @blur="if(field.format !== 'raw' && !field.locked) editingItem[field.key] = formatValue(parseNumber(editingItem[field.key]), field.format)" 
+                                    :class="[anyInput, field.locked ? 'bg-slate-100 dark:bg-slate-900 opacity-60 cursor-not-allowed text-slate-500 dark:text-slate-400' : 'border-slate-200 dark:border-slate-700 focus:border-slate-400 dark:focus:border-slate-500']" 
+                                    :placeholder="field.locked ? '' : 'Введите число...'">
+                            </template>
+
+                            <template x-if="field.type === 'boolean'">
+                                <select x-model="editingItem[field.key]" :class="anyInput">
+                                    <option value="">Не выбрано</option>
+                                    <option value="true">Да</option>
+                                    <option value="false">Нет</option>
+                                </select>
+                            </template>
+
+                            <template x-if="field.type === 'select'">
+                                <select x-model="editingItem[field.key]" :class="anyInput">
+                                    <option value="" disabled selected>Выберите значение...</option>
+                                    <template x-for="opt in field.options" :key="opt">
+                                        <option :value="opt" x-text="opt"></option>
+                                    </template>
+                                </select>
+                            </template>
+
+                            <template x-if="field.type === 'relation'">
+                                <div class="flex flex-col gap-2">
+                                    <template x-if="!field.multiple">
+                                        <div class="flex flex-col gap-1 w-full">
+                                            <input type="text" :list="'list-' + field.key" x-model="editingItem[field.key]" @change="updateDependentFields(false)" placeholder="Начните вводить..." :disabled="!!field.dependsOn && !editingItem[field.dependsOn]" :class="[anyInput, (!!field.dependsOn && !editingItem[field.dependsOn]) ? 'bg-slate-100 dark:bg-slate-900 opacity-60 cursor-not-allowed' : '', isRelationInvalid(editingItem[field.key], field.options) ? 'border-red-500 focus:border-red-500 focus:ring-red-200' : 'border-slate-200 dark:border-slate-700 focus:border-slate-400 dark:focus:border-slate-500']">
+                                            <datalist :id="'list-' + field.key">
+                                                <template x-for="opt in field.options" :key="opt"><option :value="opt"></option></template>
+                                            </datalist>
+                                            <span x-show="isRelationInvalid(editingItem[field.key], field.options)" x-cloak class="text-xs text-red-500">Ввод сторонних значений запрещен!</span>
+                                        </div>
+                                    </template>
+                                    <template x-if="field.multiple">
+                                        <div class="flex flex-col gap-3 border-l-2 border-slate-200 dark:border-slate-700 pl-3">
+                                            <template x-for="(val, index) in editingItem[field.key]" :key="index">
+                                                <div class="flex flex-col gap-1 w-full">
+                                                    <div class="flex flex-row gap-2 items-center">
+                                                        <input type="text" :list="'list-' + field.key + '-' + index" x-model="editingItem[field.key][index]" @change="updateDependentFields(false)" placeholder="Начните вводить..." :class="[anyInput, isRelationInvalid(editingItem[field.key][index], field.options) ? 'border-red-500 focus:border-red-500 focus:ring-red-200' : 'border-slate-200 dark:border-slate-700 focus:border-slate-400 dark:focus:border-slate-500']">
+                                                        <datalist :id="'list-' + field.key + '-' + index">
+                                                            <template x-for="opt in field.options" :key="opt"><option :value="opt"></option></template>
+                                                        </datalist>
+                                                        <button @click="editingItem[field.key].splice(index, 1)" class="text-rose-400 hover:text-rose-600 transition-colors"><i class="fi fi-sr-trash flex items-center text-lg"></i></button>
+                                                    </div>
+                                                </div>
+                                            </template>
+                                            <button @click="editingItem[field.key].push('')" class="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 text-left flex items-center gap-1 w-fit mt-1 transition-colors outline-none"><i class="fi fi-sr-plus-small flex justify-center items-center"></i> Добавить позицию</button>
+                                        </div>
+                                    </template>
+                                </div>
+                            </template>
+
+                            <template x-if="field.type === 'repeating_group'">
+                                <div class="flex flex-col gap-3">
+                                    <span x-show="isCreating" class="text-sm font-semibold text-slate-700 dark:text-slate-200" x-text="field.label"></span>
+                                    <div :class="!isCreating ? ['flex', 'flex-col', 'gap-3'] : ['flex', 'flex-col', 'gap-3', 'border-l-2', 'border-slate-200', 'dark:border-slate-700', 'pl-2']">
+                                        <template x-for="(item, index) in editingItem[field.key]" :key="index">
+                                            <div class="flex flex-col gap-2 p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl relative shadow-sm">
+                                                
+                                                <div x-show="isCreating" class="flex justify-between items-center pb-1 border-b border-slate-100 dark:border-slate-800">
+                                                    <span class="text-xs font-semibold text-slate-400 dark:text-slate-500" x-text="'Позиция #' + (index + 1)"></span>
+                                                    <button x-show="editingItem[field.key].length > 1" @click="editingItem[field.key].splice(index, 1)" type="button" class="text-rose-400 hover:text-rose-600 transition-colors text-xs flex items-center gap-1"><i class="fi fi-sr-trash flex justify-center items-center"></i><span>Удалить</span></button>
+                                                </div>
+
+                                                <template x-for="subField in field.fields" :key="subField.key">
+                                                    <div class="flex flex-col gap-1 w-full">
+                                                        <span class="text-xs font-medium text-slate-500 dark:text-slate-400"><span x-text="subField.label"></span><span x-show="subField.required" class="text-rose-500 ml-0.5">*</span></span>
+                                                        <template x-if="subField.type === 'text' || subField.type === 'date'">
+                                                            <input :type="subField.type" x-model="item[subField.key]" :class="anyInput" placeholder="Введите значение...">
+                                                        </template>
+                                                        <template x-if="subField.type === 'number'">
+                                                            <input type="text" x-model="item[subField.key]" @focus="if(subField.format !== 'raw') item[subField.key] = parseNumber(item[subField.key])" @blur="if(subField.format !== 'raw') item[subField.key] = formatValue(parseNumber(item[subField.key]), subField.format)" :class="anyInput" placeholder="Введите число...">
+                                                        </template>
+                                                        <template x-if="subField.type === 'select'">
+                                                            <select x-model="item[subField.key]" :class="anyInput">
+                                                                <option value="" disabled selected>Выберите значение...</option>
+                                                                <template x-for="opt in subField.options" :key="opt"><option :value="opt" x-text="opt"></option></template>
+                                                            </select>
+                                                        </template>
+                                                        <template x-if="subField.type === 'relation'">
+                                                            <div class="flex flex-col gap-1 w-full">
+                                                                <input type="text" :list="'list-' + subField.key + '-' + index" x-model="item[subField.key]" @change="updateDependentFields(false)" placeholder="Начните вводить..." :disabled="!!subField.dependsOn && !editingItem[subField.dependsOn]" :class="[anyInput, (!!subField.dependsOn && !editingItem[subField.dependsOn]) ? 'bg-slate-100 dark:bg-slate-900 opacity-60 cursor-not-allowed' : '', isRelationInvalid(item[subField.key], subField.options) ? 'border-red-500 focus:border-red-500 focus:ring-red-200' : 'border-slate-200 dark:border-slate-700 focus:border-slate-400 dark:focus:border-slate-500']">
+                                                                <datalist :id="'list-' + subField.key + '-' + index">
+                                                                    <template x-for="opt in subField.options" :key="opt"><option :value="opt"></option></template>
+                                                                </datalist>
+                                                                <span x-show="isRelationInvalid(item[subField.key], subField.options)" x-cloak class="text-xs text-red-500">Ввод сторонних значений запрещен!</span>
+                                                            </div>
+                                                        </template>
+                                                    </div>
+                                                </template>
+                                            </div>
+                                        </template>
+                                        
+                                        <button x-show="isCreating" @click="addRepeatingGroupItem(field)" type="button" class="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 text-left flex items-center gap-1 w-fit mt-1 transition-colors outline-none font-medium"><i class="fi fi-sr-plus-small flex justify-center items-center"></i> Добавить позицию</button>
+                                        
+                                    </div>
+                                </div>
+                            </template>
+
+                        </div>
+                    </template>
+                </template>
+            </template>
+            <template x-if="activeSub === 'users_list' && !isCreating && hasAccess('update')">
+                <div class="flex flex-row gap-2">
+                    <button @click="openAccessWindow()" type="button" :class="[anyBtn, 'bg-white dark:bg-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 flex-1 justify-center shadow-sm']">
+                        <i class="fi fi-sr-shield-check flex justify-center items-center"></i> Права доступа
+                    </button>
+                </div>
+            </template>
+
+        </div>
+
+        <!-- Подвал окна -->
+        <div class="flex flex-row justify-end gap-2 p-4 border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+            <button @click="showItemEdit = false" :disabled="isSaving" :class="[anyBtn, 'px-4 disabled:opacity-70 disabled:cursor-not-allowed']">Отмена</button>
+            <button @click="saveEdit()" :disabled="isSaving" :class="[anyBtn, 'bg-white dark:bg-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 px-6 disabled:opacity-70 disabled:cursor-not-allowed flex items-center gap-2']">
+                <i x-show="isSaving" x-cloak class="fi fi-sr-refresh animate-spin flex justify-center items-center"></i>
+                <span x-text="isSaving ? 'Сохранение...' : 'Сохранить'"></span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Окно смены пароля -->
+    <div x-show="showPasswordWindow" x-transition.opacity.duration.200ms x-cloak class="box-border flex justify-center items-center bg-slate-950/40 dark:bg-slate-950/70 w-screen h-screen absolute top-0 left-0 z-[20]">
+        <div @click.away="closePasswordWindow()" class="box-border flex flex-col p-6 gap-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-2xl rounded-2xl w-[400px] h-auto scale-100">
+            <span class="text-slate-800 dark:text-slate-100 text-lg font-semibold">Смена пароля</span>
+            
+            <div class="flex flex-col gap-3">
+                <input type="password" x-model="passOld" placeholder="Текущий пароль" :class="[anyInput, 'border-slate-200 dark:border-slate-700 focus:border-slate-400 dark:focus:border-slate-500']">
+                <input type="password" x-model="passNew" placeholder="Новый пароль" :class="[anyInput, 'border-slate-200 dark:border-slate-700 focus:border-slate-400 dark:focus:border-slate-500']">
+                <input type="password" x-model="passConfirm" @keydown.enter="changePassword()" placeholder="Повторите новый пароль" :class="[anyInput, 'border-slate-200 dark:border-slate-700 focus:border-slate-400 dark:focus:border-slate-500']">
+            </div>
+
+            <span x-show="passError" x-text="passError" x-transition class="text-rose-600 text-sm font-medium w-full text-center"></span>
+            
+            <div class="flex flex-row justify-end gap-2 mt-2">
+                <button @click="closePasswordWindow()" :class="[anyBtn, 'px-4']">Отмена</button>
+                <button @click="changePassword()" :class="[anyBtn, 'bg-white dark:bg-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-100 px-5']">Сохранить</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Окно диалоговое универсальное  -->
+    <div x-show="dialog.show" x-transition.opacity.duration.200ms x-cloak class="box-border flex justify-center items-center bg-slate-950/40 dark:bg-slate-950/70 w-screen h-screen absolute top-0 left-0 z-[20]">
+        <div @click.away="if(dialog.type === 'alert') closeDialog()" class="box-border flex flex-col p-6 gap-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-2xl rounded-2xl w-[400px] h-auto scale-100">
+            <span class="text-slate-800 dark:text-slate-100 text-lg font-semibold" x-text="dialog.title"></span>
+            <span class="text-slate-600 dark:text-slate-300 text-sm leading-relaxed" x-text="dialog.message"></span>
+            <div class="flex flex-row justify-end gap-2 mt-2">
+                <button x-show="dialog.type === 'confirm'" @click="cancelDialog()" :class="[anyBtn, 'px-4']">Отмена</button>
+                <button @click="confirmDialog()" :disabled="dialog.isLoading" :class="[anyBtn, 'bg-white dark:bg-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-100 px-5 disabled:opacity-70 flex items-center gap-2']">
+                    <i x-show="dialog.isLoading" x-cloak class="fi fi-sr-refresh animate-spin flex items-center text-sm"></i>
+                    <span x-text="dialog.isLoading ? 'Выполнение...' : 'Хорошо'"></span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Окно импорта -->
+    <div x-show="showImportWindow === true" x-transition class="absolute z-[8] right-0 w-[500px] h-full bg-slate-50 dark:bg-slate-800 box-border flex flex-col border-l border-slate-200 dark:border-slate-700 shadow-xl" @click.stop>
+        <div class="flex flex-row justify-between items-center w-full border-b border-slate-200 dark:border-slate-700 p-4 pb-3 bg-white dark:bg-slate-900">
+            <span class="text-slate-700 dark:text-slate-200 text-lg font-semibold">Импорт данных</span>
+            <button @click="showImportWindow = false" class="text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 outline-none transition-colors"><span class="fi fi-sr-cross"></span></button>
+        </div>
+        
+        <div class="flex flex-col gap-4 p-4 overflow-y-auto thin-scroll flex-1">
+            <div class="text-sm text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm leading-relaxed">
+                <i class="fi fi-sr-info mr-1"></i> Сопоставьте столбцы из загруженного файла с полями базы данных.
+            </div>
+
+            <div class="flex flex-col gap-1.5 w-full">
+                <span class="text-sm font-medium text-slate-600 dark:text-slate-300">Идентификатор (ID)</span>
+                <span class="text-xs text-slate-500 dark:text-slate-400 -mt-1 mb-1">Оставьте пустым для новых. Укажите ID для обновления существующих.</span>
+                <select x-model="importMapping['id']" :class="anyInput">
+                    <option value="">-- Создавать новые записи --</option>
+                    <template x-for="col in importColumns" :key="col">
+                        <option :value="col" x-text="col"></option>
+                    </template>
+                </select>
+            </div>
+
+            <hr class="border-slate-200 dark:border-slate-700 my-1">
+
+            <template x-for="field in currentEditSchema" :key="field.key">
+                <template x-if="field.type !== 'repeating_group' && !field.readonly && !field.virtual">
+                    <div class="flex flex-col gap-1 w-full">
+                        <span class="text-sm font-medium text-slate-600 dark:text-slate-300">
+                            <span x-text="field.label"></span>
+                            <span x-show="field.required" class="text-rose-500 ml-0.5">*</span>
+                        </span>
+                        <select x-model="importMapping[field.key]" :class="anyInput">
+                            <option value="">-- Пропустить --</option>
+                            <template x-for="col in importColumns" :key="col">
+                                <option :value="col" x-text="col"></option>
+                            </template>
+                        </select>
+                    </div>
+                </template>
+            </template>
+        </div>
+
+        <div class="flex flex-row justify-end gap-2 p-4 border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+            <button @click="showImportWindow = false" :class="[anyBtn, 'px-4']">Отмена</button>
+            <button @click="executeImport()" :class="[anyBtn, 'bg-white dark:bg-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-100 px-6']">Начать импорт</button>
+        </div>
+    </div>
+
+    <!-- Окно управления правами доступа -->
+    <div x-show="showAccessWindow" x-transition.opacity.duration.200ms x-cloak class="box-border flex justify-center items-center bg-slate-950/40 dark:bg-slate-950/70 w-screen h-screen absolute top-0 left-0 z-[20]">
+        <div @click.away="closeAccessWindow()" class="box-border flex flex-col p-6 gap-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-2xl rounded-2xl w-[600px] max-h-[90vh]">
+            <div class="flex flex-row justify-between items-center w-full">
+                <span class="text-slate-800 dark:text-slate-100 text-lg font-semibold">Права доступа: <span x-text="editingItem?.last_name + ' ' + editingItem?.first_name"></span></span>
+
+                <div class="flex gap-2">
+                    <input type="file" id="importAccessInput" accept=".json" class="hidden" @change="importAccessFromJSON($event)">
+
+                    <button @click="document.getElementById('importAccessInput').click()" :class="[anyBtn, 'px-2 py-1 text-sm bg-white dark:bg-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-100 shadow-sm']" title="Импорт прав из JSON">
+                        <i class="fi fi-sr-file-import flex items-center"></i>
+                    </button>
+
+                    <button @click="exportAccessToJSON()" :class="[anyBtn, 'px-2 py-1 text-sm bg-white dark:bg-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-100 shadow-sm']" title="Экспорт прав в JSON">
+                        <i class="fi fi-sr-file-export flex items-center"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="flex flex-col gap-4 overflow-y-auto thin-scroll pr-2">
+                <template x-for="item in accessData" :key="item.collectionName">
+                    <div class="flex flex-col gap-2 p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl">
+                        <!-- Русское название из menuTitles -->
+                        <span class="text-sm font-bold text-slate-700 dark:text-slate-200" x-text="item.title"></span>
+                        
+                        <div class="grid grid-cols-2 gap-2 mt-1">
+                            <label class="flex items-center gap-2 cursor-pointer text-sm text-slate-600 dark:text-slate-300 select-none">
+                                <input type="checkbox" x-model="item.rights.create" class="rounded border-slate-300 dark:border-slate-600 dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:ring-slate-400"> Создание (create)
+                            </label>
+                            <label class="flex items-center gap-2 cursor-pointer text-sm text-slate-600 dark:text-slate-300 select-none">
+                                <input type="checkbox" x-model="item.rights.delete" class="rounded border-slate-300 dark:border-slate-600 dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:ring-slate-400"> Удаление (delete)
+                            </label>
+                            <label class="flex items-center gap-2 cursor-pointer text-sm text-slate-600 dark:text-slate-300 select-none">
+                                <input type="checkbox" x-model="item.rights.update" class="rounded border-slate-300 dark:border-slate-600 dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:ring-slate-400"> Редактирование (update)
+                            </label>
+                            <label class="flex items-center gap-2 cursor-pointer text-sm text-slate-600 dark:text-slate-300 select-none">
+                                <input type="checkbox" x-model="item.rights.import_export" class="rounded border-slate-300 dark:border-slate-600 dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:ring-slate-400"> Импорт / Экспорт
+                            </label>
+                            <label class="flex items-center gap-2 cursor-pointer text-sm text-slate-600 dark:text-slate-300 select-none">
+                                <input type="checkbox" x-model="item.rights.view_all_items" class="rounded border-slate-300 dark:border-slate-600 dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:ring-slate-400"> Видеть все записи
+                            </label>
+                            <label class="flex items-center gap-2 cursor-pointer text-sm text-slate-600 dark:text-slate-300 select-none">
+                                <input type="checkbox" x-model="item.rights.view_all_columns" class="rounded border-slate-300 dark:border-slate-600 dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:ring-slate-400"> Видеть все столбцы
+                            </label>
+                        </div>
+                    </div>
+                </template>
+            </div>
+            
+            <div class="flex flex-row justify-end gap-2 mt-2 pt-4 border-t border-slate-200 dark:border-slate-700">
+                <button @click="closeAccessWindow()" :class="[anyBtn, 'px-4']">Отмена</button>
+                <button @click="saveAccess()" :disabled="isSavingAccess" :class="[anyBtn, 'bg-white dark:bg-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-100 px-5 disabled:opacity-70 disabled:cursor-not-allowed flex items-center gap-2']">
+                    <i x-show="isSavingAccess" x-cloak class="fi fi-sr-refresh animate-spin flex items-center text-sm"></i>
+                    <span x-text="isSavingAccess ? 'Сохранение...' : 'Сохранить'"></span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Авторизация -->
+    <div :class="isAuth === false ? 'box-border flex justify-center items-center bg-slate-950/40 dark:bg-slate-950/70 backdrop-blur-sm w-screen h-screen absolute top-0 left-0 z-[100]' : 'hidden'">
+        <div class="box-border flex flex-col items-center p-8 gap-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-2xl rounded-2xl w-[380px] h-auto">
+            
+            <div class="w-16 h-16 rounded-full bg-slate-50 dark:bg-slate-700 flex items-center justify-center text-slate-400 dark:text-slate-300 border border-slate-100 dark:border-slate-600 text-3xl mb-1">
+                <i class="fi fi-sr-lock flex"></i>
+            </div>
+            
+            <span class="text-slate-800 dark:text-slate-100 text-xl font-bold mb-2">Вход в систему</span>
+            
+            <input type="email" autocomplete="username" x-ref="authEmailInput" x-init="setTimeout(() => { $refs.authEmailInput.focus() }, 100)" x-model="authEmail" @keydown.enter="login()" placeholder="Введите Email..." :class="[anyInput, 'w-full border-slate-200 dark:border-slate-700 focus:border-slate-400 dark:focus:border-slate-500']">
+            <input type="password" autocomplete="current-password" x-model="authPassword" @keydown.enter="login()" placeholder="Введите пароль..." :class="[anyInput, 'w-full border-slate-200 dark:border-slate-700 focus:border-slate-400 dark:focus:border-slate-500']">
+            
+            <span x-show="authError" x-text="authError" x-transition class="text-rose-600 text-sm font-medium w-full text-center"></span>
+            
+            <button @click="login()" :disabled="isLoggingIn" :class="[subBtn, 'justify-center flex items-center gap-2 text-center font-semibold bg-slate-800 dark:bg-slate-700 text-white hover:bg-slate-700 dark:hover:bg-slate-600 hover:text-white mt-2 rounded-xl py-2.5 transition-all disabled:opacity-70 disabled:cursor-not-allowed']">
+                <i x-show="isLoggingIn" x-cloak class="fi fi-sr-refresh animate-spin flex"></i>
+                <span x-text="isLoggingIn ? 'Авторизация...' : 'Войти'"></span>
+            </button>
+        </div>
+    </div>
+
+    <script src="scripts/config.js"></script>
+    <script src="scripts/app.js"></script>
+</body>
+</html>
