@@ -4,6 +4,9 @@
 
 Система спроектирована по архитектуре **SPA (Single Page Application)** без необходимости сложной сборки Node.js, сочетая высокую скорость работы, удобный UI/UX и мощный функционал корпоративного уровня.
 
+<img width="3199" height="1726" alt="image" src="https://github.com/user-attachments/assets/ae5d1fc5-ab71-48e2-bd9c-17b531c2acf8" />
+
+
 ## Содержание
 
 - [Ключевые возможности](https://www.google.com/search?q=%23-%D0%BA%D0%BB%D1%8E%D1%87%D0%B5%D0%B2%D1%8B%D0%B5-%D0%B2%D0%BE%D0%B7%D0%BC%D0%BE%D0%B6%D0%BD%D0%BE%D1%81%D1%82%D0%B8)
