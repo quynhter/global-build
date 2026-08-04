@@ -62,7 +62,7 @@
 
 ### Экспорт и импорт
 
-- \*\*[docxtemplater](https://www.google.com/search?q=https://docxtemplater.com/) & [PizZip\*\*](https://www.google.com/search?q=https://github.com/open-xml-templating/pizzip) — генерация DOCX-документов по шаблонам на стороне клиента.
+- [docxtemplater](https://www.google.com/search?q=https://docxtemplater.com/) & [PizZip\*\*](https://www.google.com/search?q=https://github.com/open-xml-templating/pizzip) — генерация DOCX-документов по шаблонам на стороне клиента.
 - **[SheetJS (XLSX)](https://www.google.com/search?q=https://sheetjs.com/)** — парсинг файлов Excel/CSV при импорте и выгрузка логов ошибок.
 - **[FileSaver.js](https://www.google.com/search?q=https://github.com/eligrey/FileSaver.js)** — скачивание сгенерированных файлов.
 
