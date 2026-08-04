@@ -5,7 +5,7 @@
 ### 1. Клонирование репозитория
 
 ```bash
-git clone [https://github.com/your-username/global-stroy.git](https://github.com/your-username/global-stroy.git)
+git clone [https://github.com/quynhter/global-build.git](https://github.com/quynhter/global-build.git)
 cd global-stroy
 
 ```
