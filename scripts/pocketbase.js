@@ -1,0 +1,1 @@
+const pb = new PocketBase('ваш_домен');

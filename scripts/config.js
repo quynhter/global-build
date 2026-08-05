@@ -1,5 +1,3 @@
-const pb = new PocketBase('ваш_домен');
-
 const MENU_TITLES = {
     'about': 'Мой профиль',
     'companies_list': 'Компании',
