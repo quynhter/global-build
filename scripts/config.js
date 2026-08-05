@@ -1,3 +1,6 @@
+// domain заменить на свой домен, где расположен сервер PocketBase
+const pb = new PocketBase(domain);
+
 const MENU_TITLES = {
     'about': 'Мой профиль',
     'companies_list': 'Компании',
