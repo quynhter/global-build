@@ -26,12 +26,14 @@
     <!-- AlpineJS и Tailwindcss -->
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    
     <script>
         tailwind.config = {
             darkMode: 'class',
         }
     </script>
     
+    <!-- Стили для скролл-баров в браузерах -->
     <style>
         [x-cloak] { display: none !important; }
         
@@ -122,6 +124,7 @@
         
     </div>
 
+    <!-- Скрипт защиты -->
     <script>
         setTimeout(() => {
             const loader = document.getElementById('app-loader');
