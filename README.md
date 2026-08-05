@@ -72,6 +72,7 @@
 global-build/
 ├── index.html              # Главный HTML-шаблон Single Page Application
 ├── scripts/
+│   ├── pb_domain.js        # Отдельное место хранения домена для сервера PocketBase
 │   ├── config.js           # Подключение PocketBase, модели данных и конфигурации экспорта
 │   └── app.js              # Основной Alpine.js компонент sidebarMenu (CRUD, логика UI)
 ├── templates/
@@ -83,28 +84,21 @@ global-build/
 
 ## Настройка PocketBase (Бэкенд)
 
-Для полноценной работы веб-ресурса необходимо развернуть на сервере PocketBase и создать следующие коллекции согласно структуре из `scripts/config.js`:
+Для полноценной работы веб-ресурса необходимо развернуть на сервере PocketBase и создать коллекции согласно структуре `MODELS` из `scripts/config.js`. Коллекции можно назвать по-своему, однако это нужно зафиксировать в `collectionName` в `MODELS`.
 
-1.  `companies` — Компании (`name`, `inn`, `email`, `phone`)
-2.  `contacts` — Контакты (`last_name`, `first_name`, `patronymic`, `position`, `company`, `email`, `phone`)
-3.  `users` — Пользователи (`last_name`, `first_name`, `patronymic`, `position`, `company`, `role`, `global_access`)
-4.  `objects` — Объекты (`name`, `global_counterparty`, `contract`, `contract_price`)
-5.  `projects` — Проекты (`object`, `name`, `responsible_users`)
-6.  `groups` — Группы (`projects`, `name`)
-7.  `materials` — Материалы (`project`, `name`, `replacement`, `unit`, `quantity_spec`)
-8.  `supply` — Поставки / ЖВК (`supply_date`, `material`, `quantity`, `supplier`, `doc_data`, `inspection_result`, `is_lab_required`, `lab_result`, `author`)
-9.  `facts` — Расход / ЖРМ (`date`, `material`, `quantity`, `user`)
-10. `doc_status_log` — ИТД (`project`, `status`, `contact`, `responsible_company`, `responsible_user`, `signed_by`, `comment`)
-11. `general_work_log` — ОЖР (`date`, `project`, `condition`, `name`, `responsible`)
-
-Откройте файл `scripts/config.js` и укажите адрес вашего PocketBase-сервера:
+Для подключения сервера с вашей БД откройте файл `scripts/pb_domain.js` и укажите адрес вашего PocketBase-сервера:
 
 ```javascript
-const pb = new PocketBase('https://your-pocketbase-domain.com');
+const pb = 'https://ваш-домен-pocketbase.ru';
 
 ```
 
-P. S. Сейчас в файле настроена моя структура, созданная еще при проектировании другого веб-ресурса, поэтому и пришлось создать карту связывания сущностей в коде скрипта и коллекций в PocketBase.
+Либо минуя файл `scripts/pb_domain.js`, откройте `scripts/config.js` и укажите адрес в начале:
+
+```javascript
+const pb = new PocketBase('https://ваш-домен-pocketbase.ru');
+
+```
 
 ## Импорт и экспорт данных
 
