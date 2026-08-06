@@ -942,21 +942,19 @@
 
             <hr class="border-slate-200 dark:border-slate-700 my-1">
 
-            <template x-for="field in currentEditSchema" :key="field.key">
-                <template x-if="field.type !== 'repeating_group' && !field.readonly && !field.virtual">
-                    <div class="flex flex-col gap-1 w-full">
-                        <span class="text-sm font-medium text-slate-600 dark:text-slate-300">
-                            <span x-text="field.label"></span>
-                            <span x-show="field.required" class="text-rose-500 ml-0.5">*</span>
-                        </span>
-                        <select x-model="importMapping[field.key]" :class="anyInput">
-                            <option value="">-- Пропустить --</option>
-                            <template x-for="col in importColumns" :key="col">
-                                <option :value="col" x-text="col"></option>
-                            </template>
-                        </select>
-                    </div>
-                </template>
+            <template x-for="field in currentImportSchema" :key="field.key">
+                <div class="flex flex-col gap-1 w-full">
+                    <span class="text-sm font-medium text-slate-600 dark:text-slate-300">
+                        <span x-text="field.type === 'relation' ? field.label + ' (ID)' : field.label"></span>
+                        <span x-show="field.required" class="text-rose-500 ml-0.5">*</span>
+                    </span>
+                    <select x-model="importMapping[field.key]" :class="anyInput">
+                        <option value="">-- Пропустить --</option>
+                        <template x-for="col in importColumns" :key="col">
+                            <option :value="col" x-text="col"></option>
+                        </template>
+                    </select>
+                </div>
             </template>
         </div>
 

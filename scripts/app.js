@@ -100,6 +100,24 @@ document.addEventListener('alpine:init', () => {
                 return f;
             });
         },
+
+        get currentImportSchema() { 
+            const schema = this.currentEditSchema;
+            let flatSchema = [];
+            schema.forEach(field => {
+                // Если это группа - вытаскиваем поля из нее, чтобы в импорте они были на одном уровне
+                if (field.type === 'repeating_group') {
+                    field.fields.forEach(sf => {
+                        if (!sf.readonly && !sf.virtual && sf.type !== 'computed' && sf.type !== 'formula') {
+                            flatSchema.push(sf);
+                        }
+                    });
+                } else if (!field.readonly && !field.virtual && field.type !== 'computed' && field.type !== 'formula') {
+                    flatSchema.push(field);
+                }
+            });
+            return flatSchema;
+        },
         
         get userFullName() {
             const u = this.currentUser;
@@ -1948,7 +1966,7 @@ document.addEventListener('alpine:init', () => {
                     this.importMapping = {};
 
                     // Авто-маппинг
-                    this.currentEditSchema.forEach(field => {
+                    this.currentImportSchema.forEach(field => {
                         // Пытаемся найти точное совпадение
                         let match = this.importColumns.find(col => col.toLowerCase() === field.label.toLowerCase() || col === field.key);
                         
@@ -2006,8 +2024,7 @@ document.addEventListener('alpine:init', () => {
 
             // 1. Предварительная загрузка связей (relations) специально для импорта
             const relationMaps = {};
-            for (let field of this.currentEditSchema) {
-                if (field.type === 'repeating_group') continue;
+            for (let field of this.currentImportSchema) {
                 const fileCol = this.importMapping[field.key];
                 
                 if (fileCol && field.type === 'relation' && field.sourceCollection) {
@@ -2036,18 +2053,15 @@ document.addEventListener('alpine:init', () => {
 
             let successCount = 0;
             let errorCount = 0;
-            let failedRows = []; // Массив для хранения строк, которые вызвали ошибку
+            let failedRows = []; 
 
             try {
                 for (let row of this.importData) {
-                    // Оборачиваем ВЕСЬ процесс обработки строки в try...catch
                     try {
                         let recordData = {};
 
-                        // Используем for...of вместо forEach, чтобы иметь возможность вызывать throw
-                        for (let field of this.currentEditSchema) {
+                        for (let field of this.currentImportSchema) {
                             const fileCol = this.importMapping[field.key];
-                            if (field.type === 'repeating_group') continue; 
 
                             if (fileCol && row[fileCol] !== undefined && String(row[fileCol]).trim() !== '') {
                                 let val = row[fileCol];
@@ -2067,15 +2081,14 @@ document.addEventListener('alpine:init', () => {
                                         if (parts.length === 3) val = `${parts[2]}-${parts[1]}-${parts[0]}`;
                                     }
                                 } 
-                                // Обработка связей (с проверкой на наличие!)
+                                // Обработка связей (с защитой String(val))
                                 else if (field.type === 'relation' && relationMaps[field.key]) {
-                                    if (field.multiple && typeof val === 'string') {
-                                        const parts = val.split(',').map(v => v.trim()).filter(Boolean);
+                                    if (field.multiple) {
+                                        const parts = String(val).split(',').map(v => v.trim()).filter(Boolean);
                                         val = [];
                                         for (let p of parts) {
                                             const resolved = relationMaps[field.key].byId[p] || relationMaps[field.key].byText[p];
                                             if (!resolved) {
-                                                // Кидаем ошибку, если значение не найдено
                                                 throw new Error(`Поле "${field.label}": значение "${p}" не найдено в справочнике.`);
                                             }
                                             val.push(resolved);
@@ -2084,7 +2097,6 @@ document.addEventListener('alpine:init', () => {
                                         const cleanVal = String(val).trim();
                                         const resolved = relationMaps[field.key].byId[cleanVal] || relationMaps[field.key].byText[cleanVal];
                                         if (!resolved) {
-                                            // Кидаем ошибку, если значение не найдено
                                             throw new Error(`Поле "${field.label}": значение "${cleanVal}" не найдено в справочнике.`);
                                         }
                                         val = resolved;
@@ -2098,7 +2110,7 @@ document.addEventListener('alpine:init', () => {
                             }
                         }
 
-                        // Отправка в PocketBase (если дошли сюда, значит все данные ликвидны)
+                        // Отправка в PocketBase
                         const rowId = mappedIdCol ? String(row[mappedIdCol]).trim() : null;
                         
                         if (rowId) {
@@ -2114,11 +2126,9 @@ document.addEventListener('alpine:init', () => {
                         console.error("Сбой строки:", row, e);
                         errorCount++;
                         
-                        // Сохраняем строку и добавляем описание ошибки (нашей или от сервера)
                         const failedRow = { ...row };
                         let errorMsg = e.message || 'Сбой при сохранении';
                         
-                        // Если ошибка пришла от PocketBase
                         if (e.data) {
                             errorMsg = e.data.message || errorMsg;
                             if (e.data.data) {
