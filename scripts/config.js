@@ -598,7 +598,7 @@ const MODELS = {
                 width: 'min-w-[150px] max-w-[200px]'
             },
             { key: 'condition', label: 'Условие выполнения работ', required: true, type: 'text', width: 'w-[150px]' },
-            { key: 'name', label: 'Наименование работ', required: true, type: 'text', width: 'w-[400px]' },
+            { key: 'name', label: 'Наименование работ', required: true, type: 'textarea', width: 'w-[400px]' },
             {
                 key: 'responsible', 
                 label: 'Ответственный', 
