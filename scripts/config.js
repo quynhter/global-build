@@ -201,7 +201,7 @@ const MODELS = {
     },
     'materials_list': {
         collectionName: 'materials',
-        expand: ['project', 'project.object'], 
+        expand: ['project', 'project.object', 'group'],
         fields: [
             { 
                 key: 'object_name',
@@ -230,6 +230,17 @@ const MODELS = {
                 sourceKeys: ['name'], 
                 dependsOn: 'helper_object', 
                 dependsOnTarget: 'object',  
+                multiple: false,
+                width: 'min-w-[150px] max-w-[300px]'
+            },
+            {
+                key: 'group',
+                label: 'Группа',
+                type: 'relation',
+                sourceCollection: 'groups',
+                sourceKeys: ['name'],
+                dependsOn: 'project',
+                dependsOnTarget: 'projects',
                 multiple: false,
                 width: 'min-w-[150px] max-w-[300px]'
             },
@@ -276,7 +287,6 @@ const MODELS = {
                 hideOnCreate: true,
                 format: 'decimal3',
                 formula: (row, allRows, app) => {
-                    // Используем app.parseNumber, так как данные в окне редактирования уже отформатированы с пробелами
                     const spec = app ? app.parseNumber(row.quantity_spec) : (Number(row.quantity_spec) || 0);
                     const fact = app ? app.parseNumber(row.quantity_fact) : (Number(row.quantity_fact) || 0);
                     return spec - fact;
@@ -559,7 +569,7 @@ const MODELS = {
                 width: 'w-[300px]'
             },
             { key: 'signed_by', label: 'Кем подписано', type: 'text', width: 'w-[400px]' },
-            { key: 'comment', label: 'Комментарий', type: 'text', width: 'w-[400px]' }
+            { key: 'comment', label: 'Комментарий', type: 'textarea',width: 'w-[400px]' }
         ]
     },
     'general_work_log': {
@@ -598,7 +608,7 @@ const MODELS = {
                 width: 'min-w-[150px] max-w-[200px]'
             },
             { key: 'condition', label: 'Условие выполнения работ', required: true, type: 'text', width: 'w-[150px]' },
-            { key: 'name', label: 'Наименование работ', required: true, type: 'text', width: 'w-[400px]' },
+            { key: 'name', label: 'Наименование работ', required: true, type: 'textarea', width: 'w-[400px]' },
             {
                 key: 'responsible', 
                 label: 'Ответственный', 
@@ -709,7 +719,6 @@ const buildEditConfig = () => {
     let config = {};
     for (let key in MODELS) {
         config[key] = MODELS[key].fields
-            // Пропускаем обычные поля ИЛИ те, у которых есть флаг showInEdit
             .filter(f => f.showInEdit || (f.type !== 'computed' && f.type !== 'nested' && f.type !== 'formula' && !f.readonly)) 
             .map(f => {
                 if (f.type === 'repeating_group') {
@@ -717,11 +726,13 @@ const buildEditConfig = () => {
                         key: f.key,
                         label: f.label,
                         type: 'repeating_group',
+                        merge: f.merge || 'append',
                         user_visible: f.user_visible !== false,
                         fields: f.fields.map(sf => ({
                             key: sf.key,
                             label: sf.label,
                             type: sf.type || 'text',
+                            merge: sf.merge || (sf.type === 'textarea' ? 'append' : 'change'),
                             multiple: sf.multiple || false,
                             sourceCollection: sf.sourceCollection || null,
                             sourceKeys: sf.sourceKeys || null,
@@ -742,8 +753,8 @@ const buildEditConfig = () => {
                 return {
                     key: f.key,
                     label: f.label,
-                    // Превращаем вычисляемые поля в "числа" для корректной отрисовки инпута в HTML
                     type: (f.type === 'computed' || f.type === 'formula') ? 'number' : (f.type || 'text'),
+                    merge: f.merge || (f.type === 'textarea' ? 'append' : 'change'),
                     multiple: f.multiple || false,
                     sourceCollection: f.sourceCollection || null,
                     sourceKeys: f.sourceKeys || null,
@@ -758,7 +769,6 @@ const buildEditConfig = () => {
                     user_visible: f.user_visible !== false,
                     hideOnEdit: f.hideOnEdit || false,
                     hideOnCreate: f.hideOnCreate || false,
-                    // Блокируем поле, если оно вычисляемое
                     locked: f.locked || f.showInEdit || false,
                     compute: f.compute || null, 
                     formula: f.formula || null, 

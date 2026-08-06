@@ -1,9 +1,9 @@
 document.addEventListener('alpine:init', () => {
     Alpine.data('sidebarMenu', () => ({
         
-        // ==========================================
-        // 1. СОСТОЯНИЕ (STATE)
-        // ==========================================
+        /*
+        
+        */
         activeMenu: localStorage.getItem('activeMenu') || null,
         activeSub: localStorage.getItem('activeSub') || null,
         openGroup: localStorage.getItem('openGroup') || null,
@@ -46,6 +46,12 @@ document.addEventListener('alpine:init', () => {
         isFeedLoading: false,
         feedDateFrom: '',
         feedDateTo: '',
+
+        gprSelectedObject: '',
+        gprObjects: [],
+        gprData: [],
+        isGprLoading: false,
+        gprDisplayMode: 'number', // Может быть 'number' или 'percent'
 
         // ==========================================
         // 2. ВЫЧИСЛЯЕМЫЕ СВОЙСТВА (GETTERS)
@@ -93,6 +99,25 @@ document.addEventListener('alpine:init', () => {
                 }
                 return f;
             });
+        },
+
+        get currentImportSchema() { 
+            const schema = this.currentEditSchema;
+            let flatSchema = [];
+            schema.forEach(field => {
+                // Если это группа - вытаскиваем поля из нее, чтобы в импорте они были на одном уровне
+                if (field.type === 'repeating_group') {
+                    field.fields.forEach(sf => {
+                        if (!sf.readonly && !sf.virtual && sf.type !== 'computed' && sf.type !== 'formula' && !sf.locked) {
+                            flatSchema.push(sf);
+                        }
+                    });
+                } else if (!field.readonly && !field.virtual && field.type !== 'computed' && field.type !== 'formula' && !field.locked) {
+                    // ДОБАВЛЕНО: && !field.locked
+                    flatSchema.push(field);
+                }
+            });
+            return flatSchema;
         },
         
         get userFullName() {
@@ -232,7 +257,6 @@ document.addEventListener('alpine:init', () => {
                     localStorage.removeItem('activeMenu');
                 } else { 
                     localStorage.setItem('activeMenu', val); 
-                    // Если переключились на Ленту и данных еще нет — загружаем
                     if (val === 'feed' && this.feedData.length === 0) {
                         this.loadFeed(true);
                     }
@@ -245,8 +269,16 @@ document.addEventListener('alpine:init', () => {
                 } else { 
                     localStorage.setItem('activeSub', val); 
                     this.dataSources[val] = [];
-                    this.loadFiltersFromStorage(val); // <-- Загружаем фильтры при смене вкладки
-                    this.fetchData(); 
+                    this.loadFiltersFromStorage(val);
+                    
+                    // ЕСЛИ ЭТО ГПР — ГРУЗИМ ОБЪЕКТЫ
+                    if (val === 'gpr') {
+                        if (this.gprObjects.length === 0) {
+                            this.loadGprObjects();
+                        }
+                    } else {
+                        this.fetchData(); 
+                    }
                 }
             });
             
@@ -258,7 +290,6 @@ document.addEventListener('alpine:init', () => {
                 }
             });
 
-            // <-- Сохраняем perPage при его изменении
             this.$watch('perPage', (val) => { localStorage.setItem('perPage', val); this.currentPage = 1; this.selectedRows = []; });
             this.$watch('currentPage', () => { this.selectedRows = []; });
             
@@ -270,11 +301,13 @@ document.addEventListener('alpine:init', () => {
                     this.currentUser = authData.record; 
                     return this.cacheUserAccess();
                 }).then(() => {
-                    if (this.activeSub) {
-                        this.loadFiltersFromStorage(this.activeSub); // Загружаем фильтры при старте
+                    if (this.activeSub === 'gpr') {
+                        this.loadGprObjects();
+                    } else if (this.activeSub) {
+                        this.loadFiltersFromStorage(this.activeSub);
                         this.fetchData();
                     } else if (this.activeMenu === 'feed') {
-                        this.loadFeed(true); // Автоматически грузим ленту, если обновили страницу на ней
+                        this.loadFeed(true);
                     }
                 }).catch(() => {
                     this.logout();
@@ -401,6 +434,21 @@ document.addEventListener('alpine:init', () => {
                 }
             });
 
+            if (!processedCollections.has('gpr')) {
+                this.accessData.push({
+                    collectionName: 'gpr',
+                    title: MENU_TITLES['gpr'] || 'График производства работ',
+                    rights: {
+                        create: false,
+                        delete: false,
+                        update: currentGlobalAccess['gpr']?.update || false,
+                        import_export: currentGlobalAccess['gpr']?.import_export || false,
+                        view_all_items: currentGlobalAccess['gpr']?.view_all_items || false,
+                        view_all_columns: false,
+                    }
+                });
+            }
+
             this.showAccessWindow = true;
         },
         
@@ -488,7 +536,7 @@ document.addEventListener('alpine:init', () => {
             if (!this.currentUser) return false;
             if (this.currentUser.role === 'admin') return true;
 
-            const collectionName = this.collectionMap[this.activeSub];
+            const collectionName = this.collectionMap[this.activeSub] || this.activeSub; // Добавлен фолбэк
             if (!collectionName) return false;
 
             const access = this.userAccess; 
@@ -596,13 +644,19 @@ document.addEventListener('alpine:init', () => {
         selectSub(subId) {
             this.activeSub = subId;
             this.activeMenu = null;
-            this.openGroup = null; // <-- Закрываем подменю
+            this.openGroup = null; 
             this.dataSources[subId] = [];
             this.searchQuery = ''; 
             this.searchInput = '';
             this.currentPage = 1;
             this.userSortKey = null; 
             this.userSortDir = null; 
+
+            // Очищаем ГПР при переходе на другую вкладку
+            if (subId !== 'gpr') {
+                this.gprSelectedObject = '';
+                this.gprData = [];
+            }
         },
 
         toggleTheme() {
@@ -918,7 +972,7 @@ document.addEventListener('alpine:init', () => {
             this.originalGroupedIds = [];
             
             if (this.isCreating) {
-                this.editingItem = {};
+                this.editingItem = { _existingRecordId: null };
                 schema.forEach(field => {
                     if (field.type === 'repeating_group') {
                         const initialItem = {};
@@ -1115,9 +1169,8 @@ document.addEventListener('alpine:init', () => {
             }
             // --- КОНЕЦ ВАЛИДАЦИИ ---
 
-            // ЕСЛИ ВАЛИДАЦИЯ ПРОЙДЕНА — ВКЛЮЧАЕМ СПИННЕР
             this.isSaving = true;
-            await new Promise(resolve => setTimeout(resolve, 10)); // Даем браузеру время отрисовать анимацию
+            await new Promise(resolve => setTimeout(resolve, 10));
 
             try {
                 let baseData = JSON.parse(JSON.stringify(this.editingItem));
@@ -1128,7 +1181,7 @@ document.addEventListener('alpine:init', () => {
                     delete baseData.passwordConfirm;
                 }
                 
-                ['expand', 'collectionId', 'collectionName', 'created', 'updated', 'id'].forEach(k => delete baseData[k]);
+                ['expand', 'collectionId', 'collectionName', 'created', 'updated', 'id', '_existingRecordId'].forEach(k => delete baseData[k]);
                 
                 currentModel.fields.forEach(f => { 
                     if (f.type === 'computed' || f.virtual || f.readonly || f.type === 'formula') delete baseData[f.key]; 
@@ -1181,7 +1234,7 @@ document.addEventListener('alpine:init', () => {
                         }
                     };
 
-                    if (this.isCreating) {
+                    if (this.isCreating && !this.editingItem._existingRecordId) {
                         for (let itemObj of items) {
                             await createRecordForItem(itemObj, true);
                         }
@@ -1202,23 +1255,24 @@ document.addEventListener('alpine:init', () => {
                         }
                     }
                 } else {
-                    if (this.isCreating) {
+                    // 2. Выбор метода сохранений: CREATE (если запись новая) или UPDATE (если редактирование или если нашли существующую за дату)
+                    if (this.isCreating && !this.editingItem._existingRecordId) {
                         const authorField = currentModel.fields.find(f => (f.key === 'author' || f.key === 'user' || f.key === 'responsible') && f.readonly);
                         if (authorField && this.currentUser?.id) baseData[authorField.key] = this.currentUser.id;
                         await pb.collection(collectionName).create(baseData);
                     } else {
-                        await pb.collection(collectionName).update(this.editingItem.id, baseData);
+                        const recordId = this.isCreating ? this.editingItem._existingRecordId : this.editingItem.id;
+                        await pb.collection(collectionName).update(recordId, baseData);
                     }
                 }
 
                 this.showItemEdit = false;
                 await this.fetchData();
-                this.openDialog('Успех', this.isCreating ? 'Записи успешно добавлены!' : 'Данные успешно обновлены!', 'alert');
+                this.openDialog('Успех', (this.isCreating && !this.editingItem._existingRecordId) ? 'Записи успешно добавлены!' : 'Данные успешно обновлены!', 'alert');
             } catch (err) {
                 console.error("Ошибка сохранения:", err);
                 this.openDialog('Ошибка', 'Не удалось сохранить: ' + (err.message || ''), 'alert');
             } finally {
-                // ОБЯЗАТЕЛЬНО ВЫКЛЮЧАЕМ СПИННЕР В КОНЦЕ
                 this.isSaving = false;
             }
         },
@@ -1266,16 +1320,19 @@ document.addEventListener('alpine:init', () => {
                 let filterSupply = [];
                 let filterFacts = [];
                 let filterDoc = [];
+                let filterGwl = []; 
 
                 if (this.feedDateFrom) {
                     filterSupply.push(`supply_date >= "${this.feedDateFrom} 00:00:00.000Z"`);
                     filterFacts.push(`date >= "${this.feedDateFrom} 00:00:00.000Z"`);
                     filterDoc.push(`updated >= "${this.feedDateFrom} 00:00:00.000Z"`);
+                    filterGwl.push(`date >= "${this.feedDateFrom} 00:00:00.000Z"`); 
                 }
                 if (this.feedDateTo) {
                     filterSupply.push(`supply_date <= "${this.feedDateTo} 23:59:59.999Z"`);
                     filterFacts.push(`date <= "${this.feedDateTo} 23:59:59.999Z"`);
                     filterDoc.push(`updated <= "${this.feedDateTo} 23:59:59.999Z"`);
+                    filterGwl.push(`date <= "${this.feedDateTo} 23:59:59.999Z"`); 
                 }
 
                 const joinFilters = (arr) => arr.length > 0 ? arr.join(' && ') : '';
@@ -1290,10 +1347,14 @@ document.addEventListener('alpine:init', () => {
                 const docOpts = { sort: '-updated', expand: 'project,project.object,responsible_user,contact' };
                 if (joinFilters(filterDoc)) docOpts.filter = joinFilters(filterDoc);
 
+                const gwlOpts = { sort: '-date', expand: 'project,project.object,responsible' };
+                if (joinFilters(filterGwl)) gwlOpts.filter = joinFilters(filterGwl);
+
                 // Запросы в PocketBase с новыми фильтрами
                 const supplyRes = await pb.collection('supply').getList(this.feedPage, 10, supplyOpts);
                 const factsRes = await pb.collection('facts').getList(this.feedPage, 10, factsOpts);
                 const docRes = await pb.collection('doc_status_log').getList(this.feedPage, 10, docOpts);
+                const gwlRes = await pb.collection('general_work_log').getList(this.feedPage, 10, gwlOpts); 
             
                 // Временный объект для группировки записей
                 const groupedBatch = {};
@@ -1341,7 +1402,7 @@ document.addEventListener('alpine:init', () => {
                 };
             
                 // ----------------------------------------------------
-                // Б) Специальная обработка для Журнала ИТД (doc_status_log)
+                // Б) Специальная обработка для Журнала ИТД
                 // ----------------------------------------------------
                 const processDocRow = (row) => {
                     const rawDate = row.updated;
@@ -1355,73 +1416,122 @@ document.addEventListener('alpine:init', () => {
                             dateFormatted: dateFormatted,
                             typeTitle: 'Журнал движения ИТД',
                             typeKey: 'doc',
-                            docEntries: []
+                            docObjects: {} // Заменили плоский массив на иерархию
                         };
                     }
                 
                     const objName = row.expand?.project?.expand?.object?.name || 'Без объекта';
                     const projName = row.expand?.project?.name || 'Без раздела';
                 
-                    // Ответственный (из responsible_user)
                     const respObj = row.expand?.responsible_user;
-                    let respStr = '';
+                    let respStr = 'Не указан';
                     if (respObj) {
                         const pos = respObj.position ? `${respObj.position} ` : '';
                         const name = `${respObj.last_name || ''} ${respObj.first_name || ''}`.trim();
-                        respStr = `${pos}${name}`.trim();
+                        respStr = `${pos}${name}`.trim() || 'Не указан';
                     }
                 
-                    // Согласующий (из contact)
                     const contactObj = row.expand?.contact;
                     let contactStr = '';
                     if (contactObj) {
                         const pos = contactObj.position ? `${contactObj.position} ` : '';
                         const name = `${contactObj.last_name || ''} ${contactObj.first_name || ''}`.trim();
-                        const fullName = `${pos}${name}`.trim();
-                        if (fullName) contactStr = fullName;
+                        contactStr = `${pos}${name}`.trim();
                     }
                 
-                    groupedBatch[feedKey].docEntries.push({
-                        objName: objName,
-                        projName: projName,
-                        respStr: respStr,
-                        status: row.status || '',
-                        contactStr: contactStr,
-                        commentStr: row.comment || ''
-                    });
+                    // Древовидная группировка ИТД
+                    if (!groupedBatch[feedKey].docObjects[objName]) groupedBatch[feedKey].docObjects[objName] = {};
+                    if (!groupedBatch[feedKey].docObjects[objName][projName]) groupedBatch[feedKey].docObjects[objName][projName] = {};
+                    if (!groupedBatch[feedKey].docObjects[objName][projName][respStr]) groupedBatch[feedKey].docObjects[objName][projName][respStr] = [];
+
+                    let docLines = [];
+                    docLines.push(`<b>Статус:</b> ${row.status || ''}`);
+                    if (contactStr) docLines.push(`<b>Согласующий:</b> ${contactStr}`);
+                    if (row.comment) docLines.push(`<b>Комментарий:</b> ${row.comment}`);
+
+                    groupedBatch[feedKey].docObjects[objName][projName][respStr].push(docLines.join('<br>'));
+                };
+
+                // ----------------------------------------------------
+                // В) Обработка Общего журнала работ
+                // ----------------------------------------------------
+                const processGwlRow = (row) => {
+                    const rawDate = row.date;
+                    const dateFormatted = this.formatValue(rawDate, 'date');
+                    const feedKey = `gwl_${dateFormatted}`;
+                
+                    if (!groupedBatch[feedKey]) {
+                        groupedBatch[feedKey] = {
+                            id: feedKey + '_' + this.feedPage,
+                            rawDate: rawDate,
+                            dateFormatted: dateFormatted,
+                            typeTitle: 'Общий журнал работ',
+                            typeKey: 'gwl',
+                            gwlObjects: {}
+                        };
+                    }
+                
+                    const objName = row.expand?.project?.expand?.object?.name || 'Без объекта';
+                    const projName = row.expand?.project?.name || 'Без раздела';
+                
+                    const respObj = row.expand?.responsible;
+                    let respStr = 'Не указан';
+                    if (respObj) {
+                        const pos = respObj.position ? `${respObj.position} ` : '';
+                        const name = `${respObj.last_name || ''} ${respObj.first_name || ''}`.trim();
+                        respStr = `${pos}${name}`.trim() || 'Не указан';
+                    }
+                
+                    // Древовидная группировка ОЖР
+                    if (!groupedBatch[feedKey].gwlObjects[objName]) groupedBatch[feedKey].gwlObjects[objName] = {};
+                    if (!groupedBatch[feedKey].gwlObjects[objName][projName]) groupedBatch[feedKey].gwlObjects[objName][projName] = {};
+                    if (!groupedBatch[feedKey].gwlObjects[objName][projName][respStr]) groupedBatch[feedKey].gwlObjects[objName][projName][respStr] = [];
+                
+                    let workLines = [];
+                    if (row.condition) workLines.push(`<b>Условия выполнения работ:</b> ${row.condition}`);
+                    if (row.name) workLines.push(`<b>Наименование работ:</b><br>${row.name.replace(/\n/g, '<br>')}`);
+                    
+                    groupedBatch[feedKey].gwlObjects[objName][projName][respStr].push(workLines.join('<br>'));
                 };
             
                 // Заполняем временный объект
                 supplyRes.items.forEach(row => processMaterialRow(row, 'sup', 'Журнал входного контроля', 'supply_date', 'author'));
                 factsRes.items.forEach(row => processMaterialRow(row, 'fact', 'Журнал расхода материалов', 'date', 'user'));
                 docRes.items.forEach(row => processDocRow(row));
+                gwlRes.items.forEach(row => processGwlRow(row)); 
             
                 // ----------------------------------------------------
-                // В) Формирование итоговых карточек
+                // Г) Формирование итоговых карточек
                 // ----------------------------------------------------
                 let newFeedItems = Object.values(groupedBatch).map(group => {
                     let contentLines = [];
                 
                     if (group.typeKey === 'doc') {
-                        // Вывод ИТД по вашему шаблону
-                        const docBlocks = group.docEntries.map(entry => {
-                            const lines = [];
-                            lines.push(`<b>Наименование объекта:</b> «${entry.objName}»`);
-
-                            let sectionLine = `<b>Раздел:</b> ${entry.projName}`;
-                            if (entry.respStr) {
-                                sectionLine += ` (${entry.respStr})`;
+                        // Отрисовка ИТД по новой иерархии
+                        for (const [objName, projects] of Object.entries(group.docObjects)) {
+                            contentLines.push(`<b>Наименование объекта:</b> «${objName}»`);
+                            for (const [projName, responsibles] of Object.entries(projects)) {
+                                for (const [respName, docs] of Object.entries(responsibles)) {
+                                    let sectionLine = `<b>Раздел:</b> ${projName}`;
+                                    if (respName !== 'Не указан') sectionLine += ` (${respName})`;
+                                    contentLines.push(sectionLine);
+                                    contentLines.push(docs.join('<hr class="my-2 border-slate-200 dark:border-slate-700">'));
+                                }
                             }
-                            lines.push(sectionLine);
-                        
-                            lines.push(`<b>Статус:</b> ${entry.status}`);
-                            lines.push(`<b>Согласующий:</b> ${entry.contactStr}`);
-                            lines.push(`<b>Комментарий:</b> ${entry.commentStr}`);
-                        
-                            return lines.join('<br>');
-                        });
-                    
-                        contentLines = [docBlocks.join('<br><br>')];
+                        }
+                    } else if (group.typeKey === 'gwl') {
+                        // Отрисовка ОЖР по новой иерархии
+                        for (const [objName, projects] of Object.entries(group.gwlObjects)) {
+                            contentLines.push(`<b>Наименование объекта:</b> «${objName}»`);
+                            for (const [projName, responsibles] of Object.entries(projects)) {
+                                for (const [respName, works] of Object.entries(responsibles)) {
+                                    let sectionLine = `<b>Раздел:</b> ${projName}`;
+                                    if (respName !== 'Не указан') sectionLine += ` (${respName})`;
+                                    contentLines.push(sectionLine);
+                                    contentLines.push(works.join('<hr class="my-2 border-slate-200 dark:border-slate-700">'));
+                                }
+                            }
+                        }
                     } else {
                         // Стандартный вывод для материалов (ЖВК и ЖРМ)
                         for (const [objName, projects] of Object.entries(group.objects)) {
@@ -1455,7 +1565,8 @@ document.addEventListener('alpine:init', () => {
                 if (
                     supplyRes.page >= supplyRes.totalPages && 
                     factsRes.page >= factsRes.totalPages && 
-                    docRes.page >= docRes.totalPages
+                    docRes.page >= docRes.totalPages &&
+                    gwlRes.page >= gwlRes.totalPages
                 ) {
                     this.feedHasMore = false;
                 } else {
@@ -1467,6 +1578,156 @@ document.addEventListener('alpine:init', () => {
                 this.openDialog('Ошибка', 'Не удалось загрузить ленту.', 'alert');
             } finally {
                 this.isFeedLoading = false;
+            }
+        },
+
+        async checkAndMergeByDate(dateKey = null) {
+            if (!this.editingItem) return;
+
+            if (!dateKey) {
+                const dateField = this.currentEditSchema.find(f => f.type === 'date');
+                if (dateField) dateKey = dateField.key;
+                else return;
+            }
+        
+            const selectedDate = this.editingItem[dateKey];
+            if (!selectedDate) return;
+        
+            const collectionName = this.collectionMap[this.activeSub];
+            const currentModel = MODELS[this.activeSub];
+            if (!collectionName || !currentModel) return;
+
+            // Проверяем, требует ли форма указания проекта
+            const pSchema = this.currentEditSchema.find(f => f.key === 'project');
+            const hpSchema = this.currentEditSchema.find(f => f.key === 'helper_project');
+            
+            // Если требует, но он еще не выбран — прерываем поиск и ждем
+            if (pSchema && (!this.editingItem.project || String(this.editingItem.project).trim() === '')) return;
+            if (hpSchema && (!this.editingItem.helper_project || String(this.editingItem.helper_project).trim() === '')) return;
+        
+            let filterParts = [
+                `${dateKey} >= "${selectedDate} 00:00:00.000Z" && ${dateKey} <= "${selectedDate} 23:59:59.999Z"`
+            ];
+        
+            if (this.editingItem.project) {
+                const pSchema = this.currentEditSchema.find(f => f.key === 'project');
+                const pId = (pSchema && pSchema._relationMap) ? pSchema._relationMap[this.editingItem.project] : this.editingItem.project;
+                if (pId) filterParts.push(`project = "${pId}"`);
+            } else if (this.editingItem.helper_project) {
+                const pSchema = this.currentEditSchema.find(f => f.key === 'helper_project');
+                const pId = (pSchema && pSchema._relationMap) ? pSchema._relationMap[this.editingItem.helper_project] : null;
+                if (pId) filterParts.push(`project = "${pId}"`);
+            }
+        
+            const accessRule = this.buildAccessFilter(collectionName);
+            if (accessRule) filterParts.push(`(${accessRule})`);
+        
+            try {
+                const options = { filter: filterParts.join(' && '), requestKey: null };
+                if (currentModel.expand) options.expand = currentModel.expand.join(',');
+            
+                const existingRecords = await pb.collection(collectionName).getFullList(options);
+                
+                if (existingRecords.length === 0) {
+                    if (this.isCreating) {
+                        this.editingItem._existingRecordId = null;
+                        this.originalGroupedIds = [];
+                    }
+                    return;
+                }
+            
+                const existing = existingRecords[0];
+
+                if (!this.isCreating) {
+                    // Проверяем, не совпадает ли ID найденной записи с той, что мы сейчас редактируем
+                    if (existing.id !== this.editingItem.id) {
+                        this.openDialog(
+                            'Запись уже существует', 
+                            'На эту дату уже есть карточка по выбранному проекту. Чтобы избежать дубликатов, пожалуйста, редактируйте её напрямую в таблице.', 
+                            'alert'
+                        );
+                        
+                        // Откатываем поля (дату и проект) к их исходным значениям
+                        const originalRow = this.dataSources[this.activeSub].find(r => r.id === this.editingItem.id);
+                        if (originalRow) {
+                            if (originalRow[dateKey]) this.editingItem[dateKey] = originalRow[dateKey].substring(0, 10);
+                            if (originalRow.project !== undefined) this.editingItem.project = originalRow.project;
+                            if (originalRow.helper_project !== undefined) this.editingItem.helper_project = originalRow.helper_project;
+                        }
+                    }
+                    return; // Прерываем функцию, так как слияние при редактировании мы не делаем
+                }
+
+                // Логика слияния для режима Создания
+                this.editingItem._existingRecordId = existing.id;
+                this.originalGroupedIds = existingRecords.map(r => r.id);
+            
+                this.currentEditSchema.forEach(field => {
+                    if (field.key === dateKey || field.locked || field.readonly || field.virtual) return;
+                
+                    let existingVal = existing[field.key];
+                
+                    if (field.type === 'relation' && existing.expand && existing.expand[field.key]) {
+                        const relData = existing.expand[field.key];
+                        const sourceKeys = field.sourceKeys || ['name'];
+                        const resolvePath = (obj, path) => path.split('.').reduce((o, p) => (o ? o[p] : ''), obj);
+                        const buildStr = (item) => sourceKeys.map(k => resolvePath(item, k)).filter(Boolean).join(' ');
+                        existingVal = Array.isArray(relData) ? relData.map(item => buildStr(item)) : buildStr(relData);
+                    }
+                
+                    const currentVal = this.editingItem[field.key];
+                    const mergeMode = field.merge || (field.type === 'textarea' ? 'append' : 'keep');
+                
+                    if (field.type === 'repeating_group') {
+                        if (existingRecords.length > 0) {
+                            const groupItems = existingRecords.map(rec => {
+                                const itemObj = { _originalId: rec.id };
+                                field.fields.forEach(sf => {
+                                    let val = rec[sf.key];
+                                    if (sf.type === 'relation' && rec.expand && rec.expand[sf.key]) {
+                                        const relData = rec.expand[sf.key];
+                                        const sourceKeys = sf.sourceKeys || ['name'];
+                                        const resolvePath = (obj, path) => path.split('.').reduce((o, p) => (o ? o[p] : ''), obj);
+                                        val = sourceKeys.map(k => resolvePath(relData, k)).filter(Boolean).join(' ');
+                                    }
+                                    itemObj[sf.key] = val !== undefined ? val : (sf.multiple ? [] : '');
+                                });
+                                return itemObj;
+                            });
+                        
+                            if (Array.isArray(this.editingItem[field.key])) {
+                                const newUnsavedItems = this.editingItem[field.key].filter(i => !i._originalId && Object.values(i).some(v => v));
+                                this.editingItem[field.key] = [...groupItems, ...newUnsavedItems];
+                            } else {
+                                this.editingItem[field.key] = groupItems;
+                            }
+                        }
+                    } else if (mergeMode === 'append') {
+                        if (existingVal && String(existingVal).trim() !== '') {
+                            const cleanExist = String(existingVal).trim();
+                            const cleanCurrent = String(currentVal || '').trim();
+                        
+                            if (!cleanCurrent) {
+                                this.editingItem[field.key] = cleanExist;
+                            } else if (!cleanCurrent.includes(cleanExist)) {
+                                this.editingItem[field.key] = `${cleanExist}\n${cleanCurrent}`;
+                            }
+                        }
+                    } else if (mergeMode === 'keep') {
+                        // Строго сохраняем то, что в базе (затираем ручной ввод, если он был)
+                        if (existingVal !== undefined && existingVal !== null && String(existingVal).trim() !== '') {
+                            this.editingItem[field.key] = existingVal;
+                        }
+                    } else if (mergeMode === 'change') {
+                        // Подтягиваем из базы только если пользователь еще ничего не ввел
+                        if (existingVal && String(existingVal).trim() !== '' && (!currentVal || String(currentVal).trim() === '')) {
+                            this.editingItem[field.key] = existingVal;
+                        }
+                    }
+                });
+            
+            } catch (err) {
+                console.error("Ошибка при проверке записи по дате:", err);
             }
         },
 
@@ -1541,6 +1802,10 @@ document.addEventListener('alpine:init', () => {
                     processRelation(field);
                 }
             });
+
+            if (!isInitial) {
+                this.checkAndMergeByDate();
+            }
         },
 
         isRelationInvalid(value, options) {
@@ -1702,7 +1967,7 @@ document.addEventListener('alpine:init', () => {
                     this.importMapping = {};
 
                     // Авто-маппинг
-                    this.currentEditSchema.forEach(field => {
+                    this.currentImportSchema.forEach(field => {
                         // Пытаемся найти точное совпадение
                         let match = this.importColumns.find(col => col.toLowerCase() === field.label.toLowerCase() || col === field.key);
                         
@@ -1760,8 +2025,7 @@ document.addEventListener('alpine:init', () => {
 
             // 1. Предварительная загрузка связей (relations) специально для импорта
             const relationMaps = {};
-            for (let field of this.currentEditSchema) {
-                if (field.type === 'repeating_group') continue;
+            for (let field of this.currentImportSchema) {
                 const fileCol = this.importMapping[field.key];
                 
                 if (fileCol && field.type === 'relation' && field.sourceCollection) {
@@ -1790,18 +2054,15 @@ document.addEventListener('alpine:init', () => {
 
             let successCount = 0;
             let errorCount = 0;
-            let failedRows = []; // Массив для хранения строк, которые вызвали ошибку
+            let failedRows = []; 
 
             try {
                 for (let row of this.importData) {
-                    // Оборачиваем ВЕСЬ процесс обработки строки в try...catch
                     try {
                         let recordData = {};
 
-                        // Используем for...of вместо forEach, чтобы иметь возможность вызывать throw
-                        for (let field of this.currentEditSchema) {
+                        for (let field of this.currentImportSchema) {
                             const fileCol = this.importMapping[field.key];
-                            if (field.type === 'repeating_group') continue; 
 
                             if (fileCol && row[fileCol] !== undefined && String(row[fileCol]).trim() !== '') {
                                 let val = row[fileCol];
@@ -1821,15 +2082,14 @@ document.addEventListener('alpine:init', () => {
                                         if (parts.length === 3) val = `${parts[2]}-${parts[1]}-${parts[0]}`;
                                     }
                                 } 
-                                // Обработка связей (с проверкой на наличие!)
+                                // Обработка связей (с защитой String(val))
                                 else if (field.type === 'relation' && relationMaps[field.key]) {
-                                    if (field.multiple && typeof val === 'string') {
-                                        const parts = val.split(',').map(v => v.trim()).filter(Boolean);
+                                    if (field.multiple) {
+                                        const parts = String(val).split(',').map(v => v.trim()).filter(Boolean);
                                         val = [];
                                         for (let p of parts) {
                                             const resolved = relationMaps[field.key].byId[p] || relationMaps[field.key].byText[p];
                                             if (!resolved) {
-                                                // Кидаем ошибку, если значение не найдено
                                                 throw new Error(`Поле "${field.label}": значение "${p}" не найдено в справочнике.`);
                                             }
                                             val.push(resolved);
@@ -1838,7 +2098,6 @@ document.addEventListener('alpine:init', () => {
                                         const cleanVal = String(val).trim();
                                         const resolved = relationMaps[field.key].byId[cleanVal] || relationMaps[field.key].byText[cleanVal];
                                         if (!resolved) {
-                                            // Кидаем ошибку, если значение не найдено
                                             throw new Error(`Поле "${field.label}": значение "${cleanVal}" не найдено в справочнике.`);
                                         }
                                         val = resolved;
@@ -1852,7 +2111,7 @@ document.addEventListener('alpine:init', () => {
                             }
                         }
 
-                        // Отправка в PocketBase (если дошли сюда, значит все данные ликвидны)
+                        // Отправка в PocketBase
                         const rowId = mappedIdCol ? String(row[mappedIdCol]).trim() : null;
                         
                         if (rowId) {
@@ -1868,11 +2127,9 @@ document.addEventListener('alpine:init', () => {
                         console.error("Сбой строки:", row, e);
                         errorCount++;
                         
-                        // Сохраняем строку и добавляем описание ошибки (нашей или от сервера)
                         const failedRow = { ...row };
                         let errorMsg = e.message || 'Сбой при сохранении';
                         
-                        // Если ошибка пришла от PocketBase
                         if (e.data) {
                             errorMsg = e.data.message || errorMsg;
                             if (e.data.data) {
@@ -1959,6 +2216,305 @@ document.addEventListener('alpine:init', () => {
             }
 
             return value;
+        },
+        
+        /*
+        ЛОГИКА ГРАФИКА ПРОИЗВОДСТВА РАБОТ
+        */
+        gprTimeline: { years: [], months: [], weeks: [] },
+            
+        formatNumber(val) {
+            const num = Number(val) || 0;
+            if (num === 0) return '0';
+            return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 3 }).format(num);
+        },
+
+        getFactColorClass(remainder, plan) {
+            const r = Number(remainder) || 0;
+            const p = Number(plan) || 0;
+            // Если план есть и факт равен плану или превышает его
+            if (p > 0 && Math.abs(r) <= 0.001) return 'bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-400 group-hover/workrow:bg-emerald-200 dark:group-hover/workrow:bg-emerald-800';
+            // Если факт превысил план значительно
+            if (p > 0 && r < -0.001) return 'bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-400 group-hover/workrow:bg-amber-200 dark:group-hover/workrow:bg-amber-800';
+            // Нейтральный цвет
+            return 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 group-hover/workrow:bg-slate-100 dark:group-hover/workrow:bg-slate-800';
+        },
+
+        getRemColorClass(remainder) {
+            const r = Number(remainder) || 0;
+            // Остаток ушел в минус
+            if (r < -0.001) return 'bg-rose-100 dark:bg-rose-900 text-rose-800 dark:text-rose-400 group-hover/workrow:bg-rose-200 dark:group-hover/workrow:bg-rose-800';
+            // Положительный остаток или ноль
+            return 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 group-hover/workrow:bg-slate-100 dark:group-hover/workrow:bg-slate-800';
+        },
+        
+        toggleDisplayMode() {
+            this.gprDisplayMode = this.gprDisplayMode === 'number' ? 'percent' : 'number';
+        },
+        
+        formatGprValue(val, plan) {
+            const numVal = Number(val) || 0;
+            if (this.gprDisplayMode === 'percent') {
+                const numPlan = Number(plan) || 0;
+                if (numPlan === 0) return '0%';
+                return Math.round((numVal / numPlan) * 100) + '%';
+            }
+            return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 3 }).format(numVal);
+        },
+
+        generateTimeline(facts, plans) {
+            let minDate = new Date();
+            let maxDate = new Date();
+            maxDate.setMonth(maxDate.getMonth() + 3); 
+        
+            let hasDates = false;
+            
+            const checkDate = (dString) => {
+                if (!dString) return;
+                let d = new Date(dString);
+                if (isNaN(d.getTime())) return;
+                if (!hasDates || d < minDate) { minDate = d; hasDates = true; }
+                if (d > maxDate) { maxDate = d; }
+            };
+
+            facts.forEach(f => checkDate(f.date));
+            plans.forEach(p => checkDate(p.week_monday));
+        
+            minDate = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
+            maxDate = new Date(maxDate.getFullYear(), maxDate.getMonth() + 1, 0);
+        
+            const weeks = [];
+            const months = [];
+            const years = [];
+        
+            let current = new Date(minDate);
+            let day = current.getDay(), diff = current.getDate() - day + (day === 0 ? -6 : 1);
+            current = new Date(current.setDate(diff));
+        
+            while (current <= maxDate) {
+                let weekStart = new Date(current);
+                let weekEnd = new Date(current);
+                weekEnd.setDate(weekEnd.getDate() + 6);
+        
+                let midWeek = new Date(weekStart);
+                midWeek.setDate(midWeek.getDate() + 3);
+        
+                let y = midWeek.getFullYear();
+                let m = midWeek.getMonth();
+                let mName = midWeek.toLocaleString('ru-RU', { month: 'long' });
+                mName = mName.charAt(0).toUpperCase() + mName.slice(1);
+        
+                let wId = `${weekStart.getFullYear()}-${(weekStart.getMonth()+1).toString().padStart(2, '0')}-${weekStart.getDate().toString().padStart(2, '0')}`;
+                let wLabel = `${weekStart.getDate().toString().padStart(2, '0')}.${(weekStart.getMonth()+1).toString().padStart(2, '0')}`;
+        
+                weeks.push({ 
+                    id: wId, 
+                    label: wLabel, 
+                    year: y, 
+                    month: m, 
+                    monthName: mName,
+                    start: weekStart.getTime(),
+                    end: weekEnd.getTime()
+                });
+        
+                current.setDate(current.getDate() + 7);
+            }
+        
+            let lastYear = null;
+            let lastMonth = null;
+        
+            weeks.forEach(w => {
+                if (!lastYear || lastYear.value !== w.year) {
+                    lastYear = { value: w.year, colspan: 0 };
+                    years.push(lastYear);
+                }
+                lastYear.colspan++;
+        
+                let monthId = `${w.year}-${w.month}`;
+                if (!lastMonth || lastMonth.id !== monthId) {
+                    lastMonth = { id: monthId, label: w.monthName, colspan: 0 };
+                    months.push(lastMonth);
+                }
+                lastMonth.colspan++;
+            });
+        
+            this.gprTimeline = { years, months, weeks };
+        },
+
+        async savePlan(projectId, groupId, weekId, weekData) {
+            if (!this.hasAccess('update')) {
+                this.openDialog('Ошибка доступа', 'У вас нет прав на редактирование графика!', 'alert');
+                return;
+            }
+
+            let val = this.parseNumber(weekData.plan);
+            
+            try {
+                if (weekData.planId) {
+                    if (val !== null && val > 0) {
+                        await pb.collection('plans').update(weekData.planId, { quantity: val });
+                    } else {
+                        await pb.collection('plans').delete(weekData.planId);
+                        weekData.planId = null;
+                        weekData.plan = '';
+                    }
+                } else {
+                    if (val !== null && val > 0) {
+                        const record = await pb.collection('plans').create({
+                            project: projectId,
+                            group: groupId,
+                            week_monday: weekId,
+                            quantity: val
+                        });
+                        weekData.planId = record.id;
+                    } else {
+                        weekData.plan = ''; 
+                    }
+                }
+            } catch (err) {
+                console.error("Ошибка сохранения плана:", err);
+                this.openDialog('Ошибка', 'Не удалось сохранить план в базу данных.', 'alert');
+            }
+        },
+        
+        async loadGprObjects() {
+            try {
+                if (this.currentUser.role !== 'admin' && this.allowedObjectIds.length === 0) {
+                    await this.cacheUserAccess();
+                }
+            
+                // Если у пользователя есть право view_all_items в 'gpr', сбрасываем фильтрацию по объектам
+                const gprAccess = this.userAccess['gpr'] || {};
+                let accessRule = (gprAccess.view_all_items === true) ? '' : this.buildAccessFilter('objects');
+            
+                const reqOptions = { sort: 'name', requestKey: null };
+
+                if (accessRule && accessRule !== 'id="NONE"') {
+                    reqOptions.filter = accessRule;
+                } else if (accessRule === 'id="NONE"') {
+                    this.gprObjects = [];
+                    return; 
+                }
+            
+                this.gprObjects = await pb.collection('objects').getFullList(reqOptions);
+            } catch (err) {
+                console.error("Ошибка загрузки объектов ГПР", err);
+            }
+        },
+        
+        async loadGprData() {
+            if (!this.gprSelectedObject) {
+                this.gprData = [];
+                return;
+            }
+        
+            this.isGprLoading = true;
+
+            try {
+                const filterObj = `object = "${this.gprSelectedObject}"`;
+                let projectFilter = filterObj;
+
+                // Если у пользователя есть право view_all_items в 'gpr', сбрасываем фильтрацию по проектам
+                const gprAccess = this.userAccess['gpr'] || {};
+                let projAccessRule = (gprAccess.view_all_items === true) ? '' : this.buildAccessFilter('projects');
+            
+                if (projAccessRule) projectFilter = `(${filterObj}) && (${projAccessRule})`;
+
+                const projects = await pb.collection('projects').getFullList({ filter: projectFilter, sort: 'name', requestKey: null });
+                const projectIds = projects.map(p => p.id);
+            
+                if (projectIds.length === 0) {
+                    this.gprData = [];
+                    this.isGprLoading = false;
+                    return;
+                }
+            
+                const groupFilter = projectIds.map(id => `projects ~ "${id}"`).join(' || ');
+                const groups = await pb.collection('groups').getFullList({ filter: `(${groupFilter})`, sort: 'name', requestKey: null });
+            
+                const matFilter = projectIds.map(id => `project="${id}"`).join(' || ');
+                const materials = await pb.collection('materials').getFullList({ filter: `(${matFilter})`, sort: 'name', requestKey: null });
+
+                const facts = await pb.collection('facts').getFullList({
+                    filter: projectIds.map(id => `material.project="${id}"`).join(' || '),
+                    requestKey: null
+                });
+
+                const plans = await pb.collection('plans').getFullList({
+                    filter: projectIds.map(id => `project="${id}"`).join(' || '),
+                    requestKey: null
+                });
+
+                this.generateTimeline(facts, plans);
+            
+                this.gprData = projects.map(project => {
+                    const projectMaterials = materials.filter(m => m.project === project.id);
+                    const projectPlans = plans.filter(p => p.project === project.id);
+                    
+                    const projectGroups = groups.filter(g => g.projects && g.projects.includes(project.id)).map(group => {
+                        const groupMats = projectMaterials.filter(m => m.group === group.id);
+                        const groupPlans = projectPlans.filter(p => p.group === group.id);
+                        
+                        const unitsSet = new Set();
+                        let totalPlan = 0;
+                        let totalFact = 0;
+                    
+                        groupMats.forEach(m => {
+                            if (m.unit && String(m.unit).trim() !== '') unitsSet.add(String(m.unit).trim());
+                            totalPlan += (Number(m.quantity_spec) || 0);
+                        });
+
+                        const groupFacts = facts.filter(f => groupMats.some(m => m.id === f.material));
+                        
+                        const timeline = {};
+                        this.gprTimeline.weeks.forEach(w => {
+                            timeline[w.id] = { plan: '', fact: 0, planId: null };
+                        });
+
+                        groupPlans.forEach(p => {
+                            if (p.week_monday && timeline[p.week_monday]) {
+                                timeline[p.week_monday].plan = p.quantity;
+                                timeline[p.week_monday].planId = p.id;
+                            }
+                        });
+
+                        groupFacts.forEach(f => {
+                            if (!f.date) return;
+                            let fDate = new Date(f.date).getTime();
+                            totalFact += (Number(f.quantity) || 0);
+        
+                            const targetWeek = this.gprTimeline.weeks.find(w => fDate >= w.start && fDate <= w.end + 86399999);
+                            if (targetWeek) {
+                                timeline[targetWeek.id].fact += (Number(f.quantity) || 0);
+                            }
+                        });
+                    
+                        const units = Array.from(unitsSet).join(', ') || '';
+                    
+                        return {
+                            id: group.id,
+                            name: group.name,
+                            units: units,
+                            plan: totalPlan || 0,
+                            fact: totalFact,
+                            remainder: totalPlan - totalFact,
+                            timeline: timeline
+                        };
+                    });
+                
+                    return {
+                        id: project.id,
+                        name: project.name,
+                        expanded: true,
+                        groups: projectGroups.sort((a, b) => a.name.localeCompare(b.name))
+                    };
+                });
+            
+            } catch (err) {
+                console.error("Ошибка формирования данных ГПР", err);
+            } finally {
+                this.isGprLoading = false;
+            }
         },
         
         // ==========================================
