@@ -933,7 +933,7 @@
                 <span class="text-sm font-medium text-slate-600 dark:text-slate-300">Идентификатор (ID)</span>
                 <span class="text-xs text-slate-500 dark:text-slate-400 -mt-1 mb-1">Оставьте пустым для новых. Укажите ID для обновления существующих.</span>
                 <select x-model="importMapping['id']" :class="anyInput">
-                    <option value="">-- Создавать новые записи --</option>
+                    <option value="">Создавать новые записи</option>
                     <template x-for="col in importColumns" :key="col">
                         <option :value="col" x-text="col"></option>
                     </template>
@@ -949,7 +949,7 @@
                         <span x-show="field.required" class="text-rose-500 ml-0.5">*</span>
                     </span>
                     <select x-model="importMapping[field.key]" :class="anyInput">
-                        <option value="">-- Пропустить --</option>
+                        <option value="">Пропустить</option>
                         <template x-for="col in importColumns" :key="col">
                             <option :value="col" x-text="col"></option>
                         </template>
