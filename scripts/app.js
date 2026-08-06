@@ -108,11 +108,12 @@ document.addEventListener('alpine:init', () => {
                 // Если это группа - вытаскиваем поля из нее, чтобы в импорте они были на одном уровне
                 if (field.type === 'repeating_group') {
                     field.fields.forEach(sf => {
-                        if (!sf.readonly && !sf.virtual && sf.type !== 'computed' && sf.type !== 'formula') {
+                        if (!sf.readonly && !sf.virtual && sf.type !== 'computed' && sf.type !== 'formula' && !sf.locked) {
                             flatSchema.push(sf);
                         }
                     });
-                } else if (!field.readonly && !field.virtual && field.type !== 'computed' && field.type !== 'formula') {
+                } else if (!field.readonly && !field.virtual && field.type !== 'computed' && field.type !== 'formula' && !field.locked) {
+                    // ДОБАВЛЕНО: && !field.locked
                     flatSchema.push(field);
                 }
             });
