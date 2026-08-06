@@ -1301,16 +1301,19 @@ document.addEventListener('alpine:init', () => {
                 let filterSupply = [];
                 let filterFacts = [];
                 let filterDoc = [];
+                let filterGwl = []; 
 
                 if (this.feedDateFrom) {
                     filterSupply.push(`supply_date >= "${this.feedDateFrom} 00:00:00.000Z"`);
                     filterFacts.push(`date >= "${this.feedDateFrom} 00:00:00.000Z"`);
                     filterDoc.push(`updated >= "${this.feedDateFrom} 00:00:00.000Z"`);
+                    filterGwl.push(`date >= "${this.feedDateFrom} 00:00:00.000Z"`); 
                 }
                 if (this.feedDateTo) {
                     filterSupply.push(`supply_date <= "${this.feedDateTo} 23:59:59.999Z"`);
                     filterFacts.push(`date <= "${this.feedDateTo} 23:59:59.999Z"`);
                     filterDoc.push(`updated <= "${this.feedDateTo} 23:59:59.999Z"`);
+                    filterGwl.push(`date <= "${this.feedDateTo} 23:59:59.999Z"`); 
                 }
 
                 const joinFilters = (arr) => arr.length > 0 ? arr.join(' && ') : '';
@@ -1325,10 +1328,14 @@ document.addEventListener('alpine:init', () => {
                 const docOpts = { sort: '-updated', expand: 'project,project.object,responsible_user,contact' };
                 if (joinFilters(filterDoc)) docOpts.filter = joinFilters(filterDoc);
 
+                const gwlOpts = { sort: '-date', expand: 'project,project.object,responsible' };
+                if (joinFilters(filterGwl)) gwlOpts.filter = joinFilters(filterGwl);
+
                 // Запросы в PocketBase с новыми фильтрами
                 const supplyRes = await pb.collection('supply').getList(this.feedPage, 10, supplyOpts);
                 const factsRes = await pb.collection('facts').getList(this.feedPage, 10, factsOpts);
                 const docRes = await pb.collection('doc_status_log').getList(this.feedPage, 10, docOpts);
+                const gwlRes = await pb.collection('general_work_log').getList(this.feedPage, 10, gwlOpts); 
             
                 // Временный объект для группировки записей
                 const groupedBatch = {};
@@ -1376,7 +1383,7 @@ document.addEventListener('alpine:init', () => {
                 };
             
                 // ----------------------------------------------------
-                // Б) Специальная обработка для Журнала ИТД (doc_status_log)
+                // Б) Специальная обработка для Журнала ИТД
                 // ----------------------------------------------------
                 const processDocRow = (row) => {
                     const rawDate = row.updated;
@@ -1390,73 +1397,122 @@ document.addEventListener('alpine:init', () => {
                             dateFormatted: dateFormatted,
                             typeTitle: 'Журнал движения ИТД',
                             typeKey: 'doc',
-                            docEntries: []
+                            docObjects: {} // Заменили плоский массив на иерархию
                         };
                     }
                 
                     const objName = row.expand?.project?.expand?.object?.name || 'Без объекта';
                     const projName = row.expand?.project?.name || 'Без раздела';
                 
-                    // Ответственный (из responsible_user)
                     const respObj = row.expand?.responsible_user;
-                    let respStr = '';
+                    let respStr = 'Не указан';
                     if (respObj) {
                         const pos = respObj.position ? `${respObj.position} ` : '';
                         const name = `${respObj.last_name || ''} ${respObj.first_name || ''}`.trim();
-                        respStr = `${pos}${name}`.trim();
+                        respStr = `${pos}${name}`.trim() || 'Не указан';
                     }
                 
-                    // Согласующий (из contact)
                     const contactObj = row.expand?.contact;
                     let contactStr = '';
                     if (contactObj) {
                         const pos = contactObj.position ? `${contactObj.position} ` : '';
                         const name = `${contactObj.last_name || ''} ${contactObj.first_name || ''}`.trim();
-                        const fullName = `${pos}${name}`.trim();
-                        if (fullName) contactStr = fullName;
+                        contactStr = `${pos}${name}`.trim();
                     }
                 
-                    groupedBatch[feedKey].docEntries.push({
-                        objName: objName,
-                        projName: projName,
-                        respStr: respStr,
-                        status: row.status || '',
-                        contactStr: contactStr,
-                        commentStr: row.comment || ''
-                    });
+                    // Древовидная группировка ИТД
+                    if (!groupedBatch[feedKey].docObjects[objName]) groupedBatch[feedKey].docObjects[objName] = {};
+                    if (!groupedBatch[feedKey].docObjects[objName][projName]) groupedBatch[feedKey].docObjects[objName][projName] = {};
+                    if (!groupedBatch[feedKey].docObjects[objName][projName][respStr]) groupedBatch[feedKey].docObjects[objName][projName][respStr] = [];
+
+                    let docLines = [];
+                    docLines.push(`<b>Статус:</b> ${row.status || ''}`);
+                    if (contactStr) docLines.push(`<b>Согласующий:</b> ${contactStr}`);
+                    if (row.comment) docLines.push(`<b>Комментарий:</b> ${row.comment}`);
+
+                    groupedBatch[feedKey].docObjects[objName][projName][respStr].push(docLines.join('<br>'));
+                };
+
+                // ----------------------------------------------------
+                // В) Обработка Общего журнала работ
+                // ----------------------------------------------------
+                const processGwlRow = (row) => {
+                    const rawDate = row.date;
+                    const dateFormatted = this.formatValue(rawDate, 'date');
+                    const feedKey = `gwl_${dateFormatted}`;
+                
+                    if (!groupedBatch[feedKey]) {
+                        groupedBatch[feedKey] = {
+                            id: feedKey + '_' + this.feedPage,
+                            rawDate: rawDate,
+                            dateFormatted: dateFormatted,
+                            typeTitle: 'Общий журнал работ',
+                            typeKey: 'gwl',
+                            gwlObjects: {}
+                        };
+                    }
+                
+                    const objName = row.expand?.project?.expand?.object?.name || 'Без объекта';
+                    const projName = row.expand?.project?.name || 'Без раздела';
+                
+                    const respObj = row.expand?.responsible;
+                    let respStr = 'Не указан';
+                    if (respObj) {
+                        const pos = respObj.position ? `${respObj.position} ` : '';
+                        const name = `${respObj.last_name || ''} ${respObj.first_name || ''}`.trim();
+                        respStr = `${pos}${name}`.trim() || 'Не указан';
+                    }
+                
+                    // Древовидная группировка ОЖР
+                    if (!groupedBatch[feedKey].gwlObjects[objName]) groupedBatch[feedKey].gwlObjects[objName] = {};
+                    if (!groupedBatch[feedKey].gwlObjects[objName][projName]) groupedBatch[feedKey].gwlObjects[objName][projName] = {};
+                    if (!groupedBatch[feedKey].gwlObjects[objName][projName][respStr]) groupedBatch[feedKey].gwlObjects[objName][projName][respStr] = [];
+                
+                    let workLines = [];
+                    if (row.condition) workLines.push(`<b>Условия выполнения работ:</b> ${row.condition}`);
+                    if (row.name) workLines.push(`<b>Наименование работ:</b><br>${row.name.replace(/\n/g, '<br>')}`);
+                    
+                    groupedBatch[feedKey].gwlObjects[objName][projName][respStr].push(workLines.join('<br>'));
                 };
             
                 // Заполняем временный объект
                 supplyRes.items.forEach(row => processMaterialRow(row, 'sup', 'Журнал входного контроля', 'supply_date', 'author'));
                 factsRes.items.forEach(row => processMaterialRow(row, 'fact', 'Журнал расхода материалов', 'date', 'user'));
                 docRes.items.forEach(row => processDocRow(row));
+                gwlRes.items.forEach(row => processGwlRow(row)); 
             
                 // ----------------------------------------------------
-                // В) Формирование итоговых карточек
+                // Г) Формирование итоговых карточек
                 // ----------------------------------------------------
                 let newFeedItems = Object.values(groupedBatch).map(group => {
                     let contentLines = [];
                 
                     if (group.typeKey === 'doc') {
-                        // Вывод ИТД по вашему шаблону
-                        const docBlocks = group.docEntries.map(entry => {
-                            const lines = [];
-                            lines.push(`<b>Наименование объекта:</b> «${entry.objName}»`);
-
-                            let sectionLine = `<b>Раздел:</b> ${entry.projName}`;
-                            if (entry.respStr) {
-                                sectionLine += ` (${entry.respStr})`;
+                        // Отрисовка ИТД по новой иерархии
+                        for (const [objName, projects] of Object.entries(group.docObjects)) {
+                            contentLines.push(`<b>Наименование объекта:</b> «${objName}»`);
+                            for (const [projName, responsibles] of Object.entries(projects)) {
+                                for (const [respName, docs] of Object.entries(responsibles)) {
+                                    let sectionLine = `<b>Раздел:</b> ${projName}`;
+                                    if (respName !== 'Не указан') sectionLine += ` (${respName})`;
+                                    contentLines.push(sectionLine);
+                                    contentLines.push(docs.join('<hr class="my-2 border-slate-200 dark:border-slate-700">'));
+                                }
                             }
-                            lines.push(sectionLine);
-                        
-                            lines.push(`<b>Статус:</b> ${entry.status}`);
-                            lines.push(`<b>Согласующий:</b> ${entry.contactStr}`);
-                            lines.push(`<b>Комментарий:</b> ${entry.commentStr}`);
-                        
-                            return lines.join('<br>');
-                        });
-                    
-                        contentLines = [docBlocks.join('<br><br>')];
+                        }
+                    } else if (group.typeKey === 'gwl') {
+                        // Отрисовка ОЖР по новой иерархии
+                        for (const [objName, projects] of Object.entries(group.gwlObjects)) {
+                            contentLines.push(`<b>Наименование объекта:</b> «${objName}»`);
+                            for (const [projName, responsibles] of Object.entries(projects)) {
+                                for (const [respName, works] of Object.entries(responsibles)) {
+                                    let sectionLine = `<b>Раздел:</b> ${projName}`;
+                                    if (respName !== 'Не указан') sectionLine += ` (${respName})`;
+                                    contentLines.push(sectionLine);
+                                    contentLines.push(works.join('<hr class="my-2 border-slate-200 dark:border-slate-700">'));
+                                }
+                            }
+                        }
                     } else {
                         // Стандартный вывод для материалов (ЖВК и ЖРМ)
                         for (const [objName, projects] of Object.entries(group.objects)) {
@@ -1490,7 +1546,8 @@ document.addEventListener('alpine:init', () => {
                 if (
                     supplyRes.page >= supplyRes.totalPages && 
                     factsRes.page >= factsRes.totalPages && 
-                    docRes.page >= docRes.totalPages
+                    docRes.page >= docRes.totalPages &&
+                    gwlRes.page >= gwlRes.totalPages
                 ) {
                     this.feedHasMore = false;
                 } else {
