@@ -275,7 +275,7 @@
 
             <input type="file" id="importFileInput" accept=".csv, .xlsx" class="hidden" @change="handleImportFile($event)">
 
-            <button x-show="activeSub != null && isAuth === true && hasAccess('import_export')" @click="document.getElementById('importFileInput').click()" :class="anyBtn">
+            <button x-show="activeSub != null && activeSub !== 'gpr' && isAuth === true && hasAccess('import_export')" @click="document.getElementById('importFileInput').click()" :class="anyBtn">
                 <span class="fi fi-sr-file-import flex items-center"></span><span class="text-nowrap">Импорт</span>
             </button>
 

@@ -1,9 +1,9 @@
 document.addEventListener('alpine:init', () => {
     Alpine.data('sidebarMenu', () => ({
         
-        // ==========================================
-        // 1. СОСТОЯНИЕ (STATE)
-        // ==========================================
+        /*
+        
+        */
         activeMenu: localStorage.getItem('activeMenu') || null,
         activeSub: localStorage.getItem('activeSub') || null,
         openGroup: localStorage.getItem('openGroup') || null,
