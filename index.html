@@ -454,9 +454,9 @@
             
             <!-- Выбор объекта -->
             <div class="flex flex-row items-center gap-3">
-                <span class="text-slate-600 dark:text-slate-300 text-sm font-semibold">Выберите объект:</span>
-                <select x-model="gprSelectedObject" @change="loadGprData()" class="box-border px-3 py-1.5 text-sm bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg outline-none text-slate-800 dark:text-slate-100 focus:ring-1 focus:ring-sky-500 shadow-sm w-[300px] font-medium transition-colors">
-                    <option value="">-- Не выбран --</option>
+                <span class="text-slate-600 dark:text-slate-300 text-md text-nowrap">Выберите объект:</span>
+                <select x-model="gprSelectedObject" @change="loadGprData()" class="box-border px-3 py-1.5 text-sm bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg outline-none text-slate-800 dark:text-slate-100 focus:ring-1 focus:ring-sky-500 shadow-sm w-full font-medium transition-colors">
+                    <option value="">Не выбран</option>
                     <template x-for="obj in gprObjects" :key="obj.id">
                         <option :value="obj.id" x-text="obj.name"></option>
                     </template>
@@ -464,7 +464,7 @@
             </div>
         
             <!-- Контейнер графика со стандартным скроллом -->
-            <div class="flex-1 min-h-0 overflow-auto thin-scroll border border-slate-300 dark:border-slate-700 rounded-xl bg-slate-100 dark:bg-slate-900 shadow-md relative z-0">
+            <div class="flex-1 min-h-0 overflow-auto thin-scroll border border-slate-300 dark:border-slate-700 rounded-xl bg-slate-100 dark:bg-slate-900 shadow-sm relative z-0">
                 
                 <table class="border-separate border-spacing-0 w-max text-sm text-slate-800 dark:text-slate-200" x-show="!isGprLoading && gprSelectedObject">
                     <thead class="sticky top-0 z-[60] select-none shadow-md">
@@ -528,7 +528,6 @@
                                             <tr class="bg-white dark:bg-slate-900">
                                                 <td rowspan="2" class="sticky left-0 z-[25] bg-white dark:bg-slate-900 group-hover/workrow:bg-slate-100 dark:group-hover/workrow:bg-slate-800 [background-clip:padding-box] border-b border-r border-slate-300 dark:border-slate-700 p-2 pl-8 transition-colors w-[300px] min-w-[300px] max-w-[300px]">
                                                     <div class="flex items-center gap-2 text-slate-700 dark:text-slate-300 font-medium">
-                                                        <i class="fi fi-sr-object-group flex items-center text-xs opacity-50"></i>
                                                         <span class="break-words" x-text="group.name" :title="group.name"></span>
                                                     </div>
                                                 </td>
