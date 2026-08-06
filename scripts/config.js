@@ -201,7 +201,7 @@ const MODELS = {
     },
     'materials_list': {
         collectionName: 'materials',
-        expand: ['project', 'project.object'], 
+        expand: ['project', 'project.object', 'group'],
         fields: [
             { 
                 key: 'object_name',
@@ -230,6 +230,17 @@ const MODELS = {
                 sourceKeys: ['name'], 
                 dependsOn: 'helper_object', 
                 dependsOnTarget: 'object',  
+                multiple: false,
+                width: 'min-w-[150px] max-w-[300px]'
+            },
+            {
+                key: 'group',
+                label: 'Группа',
+                type: 'relation',
+                sourceCollection: 'groups',
+                sourceKeys: ['name'],
+                dependsOn: 'project',
+                dependsOnTarget: 'projects',
                 multiple: false,
                 width: 'min-w-[150px] max-w-[300px]'
             },
@@ -276,7 +287,6 @@ const MODELS = {
                 hideOnCreate: true,
                 format: 'decimal3',
                 formula: (row, allRows, app) => {
-                    // Используем app.parseNumber, так как данные в окне редактирования уже отформатированы с пробелами
                     const spec = app ? app.parseNumber(row.quantity_spec) : (Number(row.quantity_spec) || 0);
                     const fact = app ? app.parseNumber(row.quantity_fact) : (Number(row.quantity_fact) || 0);
                     return spec - fact;
