@@ -559,7 +559,7 @@ const MODELS = {
                 width: 'w-[300px]'
             },
             { key: 'signed_by', label: 'Кем подписано', type: 'text', width: 'w-[400px]' },
-            { key: 'comment', label: 'Комментарий', type: 'text', width: 'w-[400px]' }
+            { key: 'comment', label: 'Комментарий', type: 'textarea',width: 'w-[400px]' }
         ]
     },
     'general_work_log': {
@@ -709,7 +709,6 @@ const buildEditConfig = () => {
     let config = {};
     for (let key in MODELS) {
         config[key] = MODELS[key].fields
-            // Пропускаем обычные поля ИЛИ те, у которых есть флаг showInEdit
             .filter(f => f.showInEdit || (f.type !== 'computed' && f.type !== 'nested' && f.type !== 'formula' && !f.readonly)) 
             .map(f => {
                 if (f.type === 'repeating_group') {
@@ -717,11 +716,13 @@ const buildEditConfig = () => {
                         key: f.key,
                         label: f.label,
                         type: 'repeating_group',
+                        merge: f.merge || 'append',
                         user_visible: f.user_visible !== false,
                         fields: f.fields.map(sf => ({
                             key: sf.key,
                             label: sf.label,
                             type: sf.type || 'text',
+                            merge: sf.merge || (sf.type === 'textarea' ? 'append' : 'change'),
                             multiple: sf.multiple || false,
                             sourceCollection: sf.sourceCollection || null,
                             sourceKeys: sf.sourceKeys || null,
@@ -742,8 +743,8 @@ const buildEditConfig = () => {
                 return {
                     key: f.key,
                     label: f.label,
-                    // Превращаем вычисляемые поля в "числа" для корректной отрисовки инпута в HTML
                     type: (f.type === 'computed' || f.type === 'formula') ? 'number' : (f.type || 'text'),
+                    merge: f.merge || (f.type === 'textarea' ? 'append' : 'change'),
                     multiple: f.multiple || false,
                     sourceCollection: f.sourceCollection || null,
                     sourceKeys: f.sourceKeys || null,
@@ -758,7 +759,6 @@ const buildEditConfig = () => {
                     user_visible: f.user_visible !== false,
                     hideOnEdit: f.hideOnEdit || false,
                     hideOnCreate: f.hideOnCreate || false,
-                    // Блокируем поле, если оно вычисляемое
                     locked: f.locked || f.showInEdit || false,
                     compute: f.compute || null, 
                     formula: f.formula || null, 

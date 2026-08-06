@@ -731,6 +731,7 @@
                                 <input 
                                     :type="field.type" 
                                     x-model="editingItem[field.key]" 
+                                    @change="if (field.type === 'date') checkAndMergeByDate(field.key)"
                                     :disabled="field.locked"
                                     :class="[anyInput, field.locked ? 'bg-slate-100 dark:bg-slate-900 opacity-60 cursor-not-allowed text-slate-500 dark:text-slate-400' : 'border-slate-200 dark:border-slate-700 focus:border-slate-400 dark:focus:border-slate-500']" 
                                     :placeholder="field.locked ? '' : 'Введите значение...'">

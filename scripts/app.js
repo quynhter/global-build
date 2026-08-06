@@ -953,7 +953,7 @@ document.addEventListener('alpine:init', () => {
             this.originalGroupedIds = [];
             
             if (this.isCreating) {
-                this.editingItem = {};
+                this.editingItem = { _existingRecordId: null };
                 schema.forEach(field => {
                     if (field.type === 'repeating_group') {
                         const initialItem = {};
@@ -1150,9 +1150,8 @@ document.addEventListener('alpine:init', () => {
             }
             // --- КОНЕЦ ВАЛИДАЦИИ ---
 
-            // ЕСЛИ ВАЛИДАЦИЯ ПРОЙДЕНА — ВКЛЮЧАЕМ СПИННЕР
             this.isSaving = true;
-            await new Promise(resolve => setTimeout(resolve, 10)); // Даем браузеру время отрисовать анимацию
+            await new Promise(resolve => setTimeout(resolve, 10));
 
             try {
                 let baseData = JSON.parse(JSON.stringify(this.editingItem));
@@ -1163,7 +1162,7 @@ document.addEventListener('alpine:init', () => {
                     delete baseData.passwordConfirm;
                 }
                 
-                ['expand', 'collectionId', 'collectionName', 'created', 'updated', 'id'].forEach(k => delete baseData[k]);
+                ['expand', 'collectionId', 'collectionName', 'created', 'updated', 'id', '_existingRecordId'].forEach(k => delete baseData[k]);
                 
                 currentModel.fields.forEach(f => { 
                     if (f.type === 'computed' || f.virtual || f.readonly || f.type === 'formula') delete baseData[f.key]; 
@@ -1216,7 +1215,7 @@ document.addEventListener('alpine:init', () => {
                         }
                     };
 
-                    if (this.isCreating) {
+                    if (this.isCreating && !this.editingItem._existingRecordId) {
                         for (let itemObj of items) {
                             await createRecordForItem(itemObj, true);
                         }
@@ -1237,23 +1236,24 @@ document.addEventListener('alpine:init', () => {
                         }
                     }
                 } else {
-                    if (this.isCreating) {
+                    // 2. Выбор метода сохранений: CREATE (если запись новая) или UPDATE (если редактирование или если нашли существующую за дату)
+                    if (this.isCreating && !this.editingItem._existingRecordId) {
                         const authorField = currentModel.fields.find(f => (f.key === 'author' || f.key === 'user' || f.key === 'responsible') && f.readonly);
                         if (authorField && this.currentUser?.id) baseData[authorField.key] = this.currentUser.id;
                         await pb.collection(collectionName).create(baseData);
                     } else {
-                        await pb.collection(collectionName).update(this.editingItem.id, baseData);
+                        const recordId = this.isCreating ? this.editingItem._existingRecordId : this.editingItem.id;
+                        await pb.collection(collectionName).update(recordId, baseData);
                     }
                 }
 
                 this.showItemEdit = false;
                 await this.fetchData();
-                this.openDialog('Успех', this.isCreating ? 'Записи успешно добавлены!' : 'Данные успешно обновлены!', 'alert');
+                this.openDialog('Успех', (this.isCreating && !this.editingItem._existingRecordId) ? 'Записи успешно добавлены!' : 'Данные успешно обновлены!', 'alert');
             } catch (err) {
                 console.error("Ошибка сохранения:", err);
                 this.openDialog('Ошибка', 'Не удалось сохранить: ' + (err.message || ''), 'alert');
             } finally {
-                // ОБЯЗАТЕЛЬНО ВЫКЛЮЧАЕМ СПИННЕР В КОНЦЕ
                 this.isSaving = false;
             }
         },
@@ -1505,6 +1505,156 @@ document.addEventListener('alpine:init', () => {
             }
         },
 
+        async checkAndMergeByDate(dateKey = null) {
+            if (!this.editingItem) return;
+
+            if (!dateKey) {
+                const dateField = this.currentEditSchema.find(f => f.type === 'date');
+                if (dateField) dateKey = dateField.key;
+                else return;
+            }
+        
+            const selectedDate = this.editingItem[dateKey];
+            if (!selectedDate) return;
+        
+            const collectionName = this.collectionMap[this.activeSub];
+            const currentModel = MODELS[this.activeSub];
+            if (!collectionName || !currentModel) return;
+
+            // Проверяем, требует ли форма указания проекта
+            const pSchema = this.currentEditSchema.find(f => f.key === 'project');
+            const hpSchema = this.currentEditSchema.find(f => f.key === 'helper_project');
+            
+            // Если требует, но он еще не выбран — прерываем поиск и ждем
+            if (pSchema && (!this.editingItem.project || String(this.editingItem.project).trim() === '')) return;
+            if (hpSchema && (!this.editingItem.helper_project || String(this.editingItem.helper_project).trim() === '')) return;
+        
+            let filterParts = [
+                `${dateKey} >= "${selectedDate} 00:00:00.000Z" && ${dateKey} <= "${selectedDate} 23:59:59.999Z"`
+            ];
+        
+            if (this.editingItem.project) {
+                const pSchema = this.currentEditSchema.find(f => f.key === 'project');
+                const pId = (pSchema && pSchema._relationMap) ? pSchema._relationMap[this.editingItem.project] : this.editingItem.project;
+                if (pId) filterParts.push(`project = "${pId}"`);
+            } else if (this.editingItem.helper_project) {
+                const pSchema = this.currentEditSchema.find(f => f.key === 'helper_project');
+                const pId = (pSchema && pSchema._relationMap) ? pSchema._relationMap[this.editingItem.helper_project] : null;
+                if (pId) filterParts.push(`project = "${pId}"`);
+            }
+        
+            const accessRule = this.buildAccessFilter(collectionName);
+            if (accessRule) filterParts.push(`(${accessRule})`);
+        
+            try {
+                const options = { filter: filterParts.join(' && '), requestKey: null };
+                if (currentModel.expand) options.expand = currentModel.expand.join(',');
+            
+                const existingRecords = await pb.collection(collectionName).getFullList(options);
+                
+                if (existingRecords.length === 0) {
+                    if (this.isCreating) {
+                        this.editingItem._existingRecordId = null;
+                        this.originalGroupedIds = [];
+                    }
+                    return;
+                }
+            
+                const existing = existingRecords[0];
+
+                if (!this.isCreating) {
+                    // Проверяем, не совпадает ли ID найденной записи с той, что мы сейчас редактируем
+                    if (existing.id !== this.editingItem.id) {
+                        this.openDialog(
+                            'Запись уже существует', 
+                            'На эту дату уже есть карточка по выбранному проекту. Чтобы избежать дубликатов, пожалуйста, редактируйте её напрямую в таблице.', 
+                            'alert'
+                        );
+                        
+                        // Откатываем поля (дату и проект) к их исходным значениям
+                        const originalRow = this.dataSources[this.activeSub].find(r => r.id === this.editingItem.id);
+                        if (originalRow) {
+                            if (originalRow[dateKey]) this.editingItem[dateKey] = originalRow[dateKey].substring(0, 10);
+                            if (originalRow.project !== undefined) this.editingItem.project = originalRow.project;
+                            if (originalRow.helper_project !== undefined) this.editingItem.helper_project = originalRow.helper_project;
+                        }
+                    }
+                    return; // Прерываем функцию, так как слияние при редактировании мы не делаем
+                }
+
+                // Логика слияния для режима Создания
+                this.editingItem._existingRecordId = existing.id;
+                this.originalGroupedIds = existingRecords.map(r => r.id);
+            
+                this.currentEditSchema.forEach(field => {
+                    if (field.key === dateKey || field.locked || field.readonly || field.virtual) return;
+                
+                    let existingVal = existing[field.key];
+                
+                    if (field.type === 'relation' && existing.expand && existing.expand[field.key]) {
+                        const relData = existing.expand[field.key];
+                        const sourceKeys = field.sourceKeys || ['name'];
+                        const resolvePath = (obj, path) => path.split('.').reduce((o, p) => (o ? o[p] : ''), obj);
+                        const buildStr = (item) => sourceKeys.map(k => resolvePath(item, k)).filter(Boolean).join(' ');
+                        existingVal = Array.isArray(relData) ? relData.map(item => buildStr(item)) : buildStr(relData);
+                    }
+                
+                    const currentVal = this.editingItem[field.key];
+                    const mergeMode = field.merge || (field.type === 'textarea' ? 'append' : 'keep');
+                
+                    if (field.type === 'repeating_group') {
+                        if (existingRecords.length > 0) {
+                            const groupItems = existingRecords.map(rec => {
+                                const itemObj = { _originalId: rec.id };
+                                field.fields.forEach(sf => {
+                                    let val = rec[sf.key];
+                                    if (sf.type === 'relation' && rec.expand && rec.expand[sf.key]) {
+                                        const relData = rec.expand[sf.key];
+                                        const sourceKeys = sf.sourceKeys || ['name'];
+                                        const resolvePath = (obj, path) => path.split('.').reduce((o, p) => (o ? o[p] : ''), obj);
+                                        val = sourceKeys.map(k => resolvePath(relData, k)).filter(Boolean).join(' ');
+                                    }
+                                    itemObj[sf.key] = val !== undefined ? val : (sf.multiple ? [] : '');
+                                });
+                                return itemObj;
+                            });
+                        
+                            if (Array.isArray(this.editingItem[field.key])) {
+                                const newUnsavedItems = this.editingItem[field.key].filter(i => !i._originalId && Object.values(i).some(v => v));
+                                this.editingItem[field.key] = [...groupItems, ...newUnsavedItems];
+                            } else {
+                                this.editingItem[field.key] = groupItems;
+                            }
+                        }
+                    } else if (mergeMode === 'append') {
+                        if (existingVal && String(existingVal).trim() !== '') {
+                            const cleanExist = String(existingVal).trim();
+                            const cleanCurrent = String(currentVal || '').trim();
+                        
+                            if (!cleanCurrent) {
+                                this.editingItem[field.key] = cleanExist;
+                            } else if (!cleanCurrent.includes(cleanExist)) {
+                                this.editingItem[field.key] = `${cleanExist}\n${cleanCurrent}`;
+                            }
+                        }
+                    } else if (mergeMode === 'keep') {
+                        // Строго сохраняем то, что в базе (затираем ручной ввод, если он был)
+                        if (existingVal !== undefined && existingVal !== null && String(existingVal).trim() !== '') {
+                            this.editingItem[field.key] = existingVal;
+                        }
+                    } else if (mergeMode === 'change') {
+                        // Подтягиваем из базы только если пользователь еще ничего не ввел
+                        if (existingVal && String(existingVal).trim() !== '' && (!currentVal || String(currentVal).trim() === '')) {
+                            this.editingItem[field.key] = existingVal;
+                        }
+                    }
+                });
+            
+            } catch (err) {
+                console.error("Ошибка при проверке записи по дате:", err);
+            }
+        },
+
         // ==========================================
         // 9. ЛОГИКА ФОРМ И СВЯЗЕЙ (RELATIONS & GROUPS)
         // ==========================================
@@ -1576,6 +1726,10 @@ document.addEventListener('alpine:init', () => {
                     processRelation(field);
                 }
             });
+
+            if (!isInitial) {
+                this.checkAndMergeByDate();
+            }
         },
 
         isRelationInvalid(value, options) {
@@ -1996,9 +2150,9 @@ document.addEventListener('alpine:init', () => {
             return value;
         },
         
-        // ==========================================
-        // ЛОГИКА ГРАФИКА ПРОИЗВОДСТВА РАБОТ
-        // ==========================================
+        /*
+        ЛОГИКА ГРАФИКА ПРОИЗВОДСТВА РАБОТ
+        */
         gprTimeline: { years: [], months: [], weeks: [] },
             
         formatNumber(val) {
