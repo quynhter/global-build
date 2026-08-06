@@ -555,7 +555,7 @@
                                                 <!-- Ячейки таймлайна План -->
                                                 <template x-for="week in gprTimeline.weeks" :key="'pw-'+week.id">
                                                     <td class="bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 [background-clip:padding-box] border-b border-r border-slate-300 dark:border-slate-700 p-0 relative transition-colors">
-                                                        <input type="text" x-model="group.timeline[week.id].plan" @change="savePlan(project.id, group.id, week.id, group.timeline[week.id])" class="w-full h-full text-center bg-transparent border-none focus:ring-2 focus:ring-inset focus:ring-sky-500 outline-none px-1 py-1.5 text-xs font-bold text-sky-700 dark:text-sky-400 transition-all placeholder:font-normal placeholder:text-slate-300 dark:placeholder:text-slate-600" placeholder="План">
+                                                        <input type="text" x-model="group.timeline[week.id].plan" @change="savePlan(project.id, group.id, week.id, group.timeline[week.id])" :disabled="!hasAccess('update')" :class="['w-full h-full text-center bg-transparent border-none focus:ring-2 focus:ring-inset focus:ring-sky-500 outline-none px-1 py-1.5 text-xs font-bold text-sky-700 dark:text-sky-400 transition-all placeholder:font-normal placeholder:text-slate-300 dark:placeholder:text-slate-600', !hasAccess('update') ? 'cursor-not-allowed opacity-60' : '']" placeholder="План">
                                                     </td>
                                                 </template>
                                             </tr>
