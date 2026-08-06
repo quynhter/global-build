@@ -470,31 +470,37 @@
                     <thead class="sticky top-0 z-[60] select-none shadow-md">
                         <tr>
                             <!-- 5 верхне-левых закрепленных ячеек пересечения -->
-                            <th rowspan="3" class="sticky top-0 left-0 z-[75] bg-slate-200 dark:bg-slate-800 [background-clip:padding-box] border-b border-r border-slate-300 dark:border-slate-700 p-2 w-[300px] min-w-[300px] max-w-[300px] text-left font-bold text-slate-700 dark:text-slate-200">Наименование группы работ</th>
+                            <th rowspan="3" class="sticky top-0 left-0 z-[75] bg-slate-200 dark:bg-slate-800 [background-clip:padding-box] border-b border-r border-slate-300 dark:border-slate-700 p-2 w-[300px] min-w-[300px] max-w-[300px] text-center font-bold text-slate-700 dark:text-slate-200">Наименование группы работ</th>
                             <th rowspan="3" class="sticky top-0 left-[300px] z-[74] bg-slate-200 dark:bg-slate-800 [background-clip:padding-box] border-b border-r border-slate-300 dark:border-slate-700 p-2 w-[70px] min-w-[70px] max-w-[70px] text-center font-bold text-slate-700 dark:text-slate-200">Ед. изм.</th>
-                            <th rowspan="3" class="sticky top-0 left-[370px] z-[73] bg-slate-200 dark:bg-slate-800 [background-clip:padding-box] border-b border-r border-slate-300 dark:border-slate-700 p-2 w-[80px] min-w-[80px] max-w-[80px] text-center font-bold text-slate-700 dark:text-slate-200">План общ.</th>
-                            <th rowspan="3" class="sticky top-0 left-[450px] z-[72] bg-slate-200 dark:bg-slate-800 [background-clip:padding-box] border-b border-r border-slate-300 dark:border-slate-700 p-2 w-[80px] min-w-[80px] max-w-[80px] text-center cursor-pointer hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors font-bold text-slate-700 dark:text-slate-200" @click="toggleDisplayMode()" title="Нажмите, чтобы изменить отображение (число/проценты)">
+
+                            <!-- План общ. (увеличено до 110px) -->
+                            <th rowspan="3" class="sticky top-0 left-[370px] z-[73] bg-slate-200 dark:bg-slate-800 [background-clip:padding-box] border-b border-r border-slate-300 dark:border-slate-700 p-2 w-[110px] min-w-[110px] max-w-[110px] text-center font-bold text-slate-700 dark:text-slate-200">План общ.</th>
+
+                            <!-- Факт общ. (110px, новое смещение left-[480px]) -->
+                            <th rowspan="3" class="sticky top-0 left-[480px] z-[72] bg-slate-200 dark:bg-slate-800 [background-clip:padding-box] border-b border-r border-slate-300 dark:border-slate-700 p-2 w-[110px] min-w-[110px] max-w-[110px] text-center cursor-pointer hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors font-bold text-slate-700 dark:text-slate-200" @click="toggleDisplayMode()" title="Нажмите, чтобы изменить отображение (число/проценты)">
                                 <div class="flex items-center justify-center gap-1">Факт общ. <i class="fi fi-sr-arrows-repeat flex items-center text-[10px] opacity-60"></i></div>
                             </th>
-                            <th rowspan="3" class="sticky top-0 left-[530px] z-[71] bg-slate-200 dark:bg-slate-800 [background-clip:padding-box] border-b border-r border-slate-300 dark:border-slate-700 p-2 w-[80px] min-w-[80px] max-w-[80px] text-center cursor-pointer hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors font-bold text-slate-700 dark:text-slate-200" @click="toggleDisplayMode()" title="Нажмите, чтобы изменить отображение (число/проценты)">
+
+                            <!-- Ост. (110px, новое смещение left-[590px]) -->
+                            <th rowspan="3" class="sticky top-0 left-[590px] z-[71] bg-slate-200 dark:bg-slate-800 [background-clip:padding-box] border-b border-r border-slate-300 dark:border-slate-700 p-2 w-[110px] min-w-[110px] max-w-[110px] text-center cursor-pointer hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors font-bold text-slate-700 dark:text-slate-200" @click="toggleDisplayMode()" title="Нажмите, чтобы изменить отображение (число/проценты)">
                                 <div class="flex items-center justify-center gap-1">Ост. <i class="fi fi-sr-arrows-repeat flex items-center text-[10px] opacity-60"></i></div>
                             </th>
-                            
+
                             <!-- Года -->
                             <template x-for="year in gprTimeline.years" :key="year.value">
-                                <th :colspan="year.colspan" class="bg-slate-200 dark:bg-slate-800 [background-clip:padding-box] border-b border-r border-slate-300 dark:border-slate-700 p-1.5 text-center font-bold text-slate-800 dark:text-slate-100" x-text="year.value"></th>
+                                <th :colspan="year.colspan" class="bg-slate-200 dark:bg-slate-800 [background-clip:padding-box] border-b border-r border-slate-300 dark:border-slate-700 p-1.5 text-center font-bold text-slate-800 dark:text-slate-100" x-text="year.value" :title="year.value"></th>
                             </template>
                         </tr>
                         <tr>
                             <!-- Месяца -->
                             <template x-for="month in gprTimeline.months" :key="month.id">
-                                <th :colspan="month.colspan" class="bg-slate-200 dark:bg-slate-800 [background-clip:padding-box] border-b border-r border-slate-300 dark:border-slate-700 p-1.5 text-center font-bold text-slate-800 dark:text-slate-100" x-text="month.label"></th>
+                                <th :colspan="month.colspan" class="bg-slate-200 dark:bg-slate-800 [background-clip:padding-box] border-b border-r border-slate-300 dark:border-slate-700 p-1.5 text-center font-bold text-slate-800 dark:text-slate-100" x-text="month.label" :title="month.label"></th>
                             </template>
                         </tr>
                         <tr>
                             <!-- Недели -->
                             <template x-for="week in gprTimeline.weeks" :key="week.id">
-                                <th class="bg-slate-200 dark:bg-slate-800 [background-clip:padding-box] border-b border-r border-slate-300 dark:border-slate-700 p-1 text-xs text-center font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap min-w-[80px]" x-text="week.label"></th>
+                                <th class="bg-slate-200 dark:bg-slate-800 [background-clip:padding-box] border-b border-r border-slate-300 dark:border-slate-700 p-1 text-xs text-center font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap min-w-[80px]" x-text="week.label" :title="week.label"></th>
                             </template>
                         </tr>
                     </thead>
@@ -511,54 +517,55 @@
                                         </div>
                                     </td>
                                     <td class="sticky left-[300px] z-[34] bg-sky-100 dark:bg-sky-900 group-hover/proj:bg-sky-200 dark:group-hover/proj:bg-sky-800 [background-clip:padding-box] border-b border-r border-slate-300 dark:border-slate-700 p-2.5 transition-colors w-[70px] min-w-[70px] max-w-[70px]"></td>
-                                    <td class="sticky left-[370px] z-[33] bg-sky-100 dark:bg-sky-900 group-hover/proj:bg-sky-200 dark:group-hover/proj:bg-sky-800 [background-clip:padding-box] border-b border-r border-slate-300 dark:border-slate-700 p-2.5 transition-colors w-[80px] min-w-[80px] max-w-[80px]"></td>
-                                    <td class="sticky left-[450px] z-[32] bg-sky-100 dark:bg-sky-900 group-hover/proj:bg-sky-200 dark:group-hover/proj:bg-sky-800 [background-clip:padding-box] border-b border-r border-slate-300 dark:border-slate-700 p-2.5 transition-colors w-[80px] min-w-[80px] max-w-[80px]"></td>
-                                    <td class="sticky left-[530px] z-[31] bg-sky-100 dark:bg-sky-900 group-hover/proj:bg-sky-200 dark:group-hover/proj:bg-sky-800 [background-clip:padding-box] border-b border-r border-slate-300 dark:border-slate-700 p-2.5 transition-colors w-[80px] min-w-[80px] max-w-[80px]"></td>
+                                    <td class="sticky left-[370px] z-[33] bg-sky-100 dark:bg-sky-900 group-hover/proj:bg-sky-200 dark:group-hover/proj:bg-sky-800 [background-clip:padding-box] border-b border-r border-slate-300 dark:border-slate-700 p-2.5 transition-colors w-[110px] min-w-[110px] max-w-[110px]"></td>
+                                    <td class="sticky left-[480px] z-[32] bg-sky-100 dark:bg-sky-900 group-hover/proj:bg-sky-200 dark:group-hover/proj:bg-sky-800 [background-clip:padding-box] border-b border-r border-slate-300 dark:border-slate-700 p-2.5 transition-colors w-[110px] min-w-[110px] max-w-[110px]"></td>
+                                    <td class="sticky left-[590px] z-[31] bg-sky-100 dark:bg-sky-900 group-hover/proj:bg-sky-200 dark:group-hover/proj:bg-sky-800 [background-clip:padding-box] border-b border-r border-slate-300 dark:border-slate-700 p-2.5 transition-colors w-[110px] min-w-[110px] max-w-[110px]"></td>
                                     <!-- Заливка пустых клеток проекта по неделям -->
                                     <template x-for="week in gprTimeline.weeks" :key="'pw-'+week.id">
                                         <td class="bg-sky-100 dark:bg-sky-900 group-hover/proj:bg-sky-200 dark:group-hover/proj:bg-sky-800 [background-clip:padding-box] border-b border-r border-slate-300 dark:border-slate-700 p-1 transition-colors"></td>
                                     </template>
                                 </tr>
-                                
+
                                 <!-- Строки групп -->
                                 <template x-if="project.expanded">
                                     <template x-for="group in project.groups" :key="group.id">
                                         <tbody class="contents group/workrow">
-                                            <!-- ПЛАН (первая строка) -->
+                                            <!-- План (первая строка) -->
                                             <tr class="bg-white dark:bg-slate-900">
-                                                <td rowspan="2" class="sticky left-0 z-[25] bg-white dark:bg-slate-900 group-hover/workrow:bg-slate-100 dark:group-hover/workrow:bg-slate-800 [background-clip:padding-box] border-b border-r border-slate-300 dark:border-slate-700 p-2 pl-8 transition-colors w-[300px] min-w-[300px] max-w-[300px]">
+                                                <td rowspan="2" class="sticky left-0 z-[25] bg-white dark:bg-slate-900 group-hover/workrow:bg-slate-100 dark:group-hover/workrow:bg-slate-800 [background-clip:padding-box] border-b border-r border-slate-300 dark:border-slate-700 p-2 transition-colors w-[300px] min-w-[300px] max-w-[300px]">
                                                     <div class="flex items-center gap-2 text-slate-700 dark:text-slate-300 font-medium">
                                                         <span class="break-words" x-text="group.name" :title="group.name"></span>
                                                     </div>
                                                 </td>
                                                 <td rowspan="2" class="sticky left-[300px] z-[24] bg-white dark:bg-slate-900 group-hover/workrow:bg-slate-100 dark:group-hover/workrow:bg-slate-800 [background-clip:padding-box] border-b border-r border-slate-300 dark:border-slate-700 p-2 text-center text-xs text-slate-500 dark:text-slate-400 transition-colors break-words w-[70px] min-w-[70px] max-w-[70px]" x-text="group.units" :title="group.units"></td>
-                                                
-                                                <td rowspan="2" class="sticky left-[370px] z-[23] bg-white dark:bg-slate-900 group-hover/workrow:bg-slate-100 dark:group-hover/workrow:bg-slate-800 [background-clip:padding-box] border-b border-r border-slate-300 dark:border-slate-700 p-2 text-center text-sm font-bold text-slate-800 dark:text-slate-200 transition-colors w-[80px] min-w-[80px] max-w-[80px]" x-text="formatNumber(group.plan)"></td>
-                                                
-                                                <!-- Динамический цвет Факта -->
-                                                <td rowspan="2" class="sticky left-[450px] z-[22] [background-clip:padding-box] border-b border-r border-slate-300 dark:border-slate-700 p-2 text-center text-sm font-bold transition-colors w-[80px] min-w-[80px] max-w-[80px]"
+
+                                                <!-- План общ. (110px) -->
+                                                <td rowspan="2" class="sticky left-[370px] z-[23] bg-white dark:bg-slate-900 group-hover/workrow:bg-slate-100 dark:group-hover/workrow:bg-slate-800 [background-clip:padding-box] border-b border-r border-slate-300 dark:border-slate-700 p-2 text-center text-sm font-bold text-slate-800 dark:text-slate-200 transition-colors w-[110px] min-w-[110px] max-w-[110px]" x-text="formatNumber(group.plan)"></td>
+
+                                                <!-- Динамический цвет Факта (110px, left-[480px]) -->
+                                                <td rowspan="2" class="sticky left-[480px] z-[22] [background-clip:padding-box] border-b border-r border-slate-300 dark:border-slate-700 p-2 text-center text-sm font-bold transition-colors w-[110px] min-w-[110px] max-w-[110px]"
                                                     :class="getFactColorClass(group.remainder, group.plan)"
                                                     x-text="formatGprValue(group.fact, group.plan)"></td>
-                                                
-                                                <!-- Динамический цвет Остатка -->
-                                                <td rowspan="2" class="sticky left-[530px] z-[21] [background-clip:padding-box] border-b border-r border-slate-300 dark:border-slate-700 p-2 text-center text-sm font-bold transition-colors w-[80px] min-w-[80px] max-w-[80px]"
+
+                                                <!-- Динамический цвет Остатка (110px, left-[590px]) -->
+                                                <td rowspan="2" class="sticky left-[590px] z-[21] [background-clip:padding-box] border-b border-r border-slate-300 dark:border-slate-700 p-2 text-center text-sm font-bold transition-colors w-[110px] min-w-[110px] max-w-[110px]"
                                                     :class="getRemColorClass(group.remainder)"
                                                     x-text="formatGprValue(group.remainder, group.plan)"></td>
-                                                
-                                                <!-- Ячейки таймлайна ПЛАН -->
+
+                                                <!-- Ячейки таймлайна План -->
                                                 <template x-for="week in gprTimeline.weeks" :key="'pw-'+week.id">
                                                     <td class="bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 [background-clip:padding-box] border-b border-r border-slate-300 dark:border-slate-700 p-0 relative transition-colors">
                                                         <input type="text" x-model="group.timeline[week.id].plan" @change="savePlan(project.id, group.id, week.id, group.timeline[week.id])" class="w-full h-full text-center bg-transparent border-none focus:ring-2 focus:ring-inset focus:ring-sky-500 outline-none px-1 py-1.5 text-xs font-bold text-sky-700 dark:text-sky-400 transition-all placeholder:font-normal placeholder:text-slate-300 dark:placeholder:text-slate-600" placeholder="План">
                                                     </td>
                                                 </template>
                                             </tr>
-                                            <!-- ФАКТ (вторая строка) -->
+                                            <!-- Факт (вторая строка) -->
                                             <tr class="bg-white dark:bg-slate-900">
-                                                <!-- Ячейки таймлайна ФАКТ -->
+                                                <!-- Ячейки таймлайна Факт -->
                                                 <template x-for="week in gprTimeline.weeks" :key="'fw-'+week.id">
                                                     <td class="[background-clip:padding-box] border-b border-r border-slate-300 dark:border-slate-700 p-1 text-center h-[28px] transition-colors cursor-not-allowed select-none"
-                                                        :class="group.timeline[week.id].fact > 0 ? 'bg-emerald-100 dark:bg-emerald-900 hover:bg-emerald-200 dark:hover:bg-emerald-800' : 'bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800'">
-                                                        <span x-show="group.timeline[week.id].fact > 0" class="text-[11px] text-emerald-800 dark:text-emerald-400 font-bold" x-text="'Ф: ' + formatNumber(group.timeline[week.id].fact)" :title="'Факт за неделю: ' + formatNumber(group.timeline[week.id].fact)"></span>
+                                                        :class="group.timeline[week.id].fact > 0 ? 'bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800' : 'bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800'">
+                                                        <span x-show="group.timeline[week.id].fact > 0" class="text-xs text-purple-700 dark:text-purple-400 font-bold" x-text="formatNumber(group.timeline[week.id].fact)" :title="'Факт за неделю: ' + formatNumber(group.timeline[week.id].fact)"></span>
                                                         <span x-show="!group.timeline[week.id].fact || group.timeline[week.id].fact <= 0" class="text-xs font-normal text-slate-300 dark:text-slate-600">Факт</span>
                                                     </td>
                                                 </template>
