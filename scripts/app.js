@@ -415,6 +415,21 @@ document.addEventListener('alpine:init', () => {
                 }
             });
 
+            if (!processedCollections.has('gpr')) {
+                this.accessData.push({
+                    collectionName: 'gpr',
+                    title: MENU_TITLES['gpr'] || 'График производства работ',
+                    rights: {
+                        create: false,
+                        delete: false,
+                        update: currentGlobalAccess['gpr']?.update || false,
+                        import_export: currentGlobalAccess['gpr']?.import_export || false,
+                        view_all_items: currentGlobalAccess['gpr']?.view_all_items || false,
+                        view_all_columns: false,
+                    }
+                });
+            }
+
             this.showAccessWindow = true;
         },
         
@@ -502,7 +517,7 @@ document.addEventListener('alpine:init', () => {
             if (!this.currentUser) return false;
             if (this.currentUser.role === 'admin') return true;
 
-            const collectionName = this.collectionMap[this.activeSub];
+            const collectionName = this.collectionMap[this.activeSub] || this.activeSub; // Добавлен фолбэк
             if (!collectionName) return false;
 
             const access = this.userAccess; 
@@ -2105,6 +2120,11 @@ document.addEventListener('alpine:init', () => {
         },
 
         async savePlan(projectId, groupId, weekId, weekData) {
+            if (!this.hasAccess('update')) {
+                this.openDialog('Ошибка доступа', 'У вас нет прав на редактирование графика!', 'alert');
+                return;
+            }
+
             let val = this.parseNumber(weekData.plan);
             
             try {
@@ -2140,10 +2160,13 @@ document.addEventListener('alpine:init', () => {
                 if (this.currentUser.role !== 'admin' && this.allowedObjectIds.length === 0) {
                     await this.cacheUserAccess();
                 }
-
-                const accessRule = this.buildAccessFilter('objects');
+            
+                // Если у пользователя есть право view_all_items в 'gpr', сбрасываем фильтрацию по объектам
+                const gprAccess = this.userAccess['gpr'] || {};
+                let accessRule = (gprAccess.view_all_items === true) ? '' : this.buildAccessFilter('objects');
+            
                 const reqOptions = { sort: 'name', requestKey: null };
-                
+
                 if (accessRule && accessRule !== 'id="NONE"') {
                     reqOptions.filter = accessRule;
                 } else if (accessRule === 'id="NONE"') {
@@ -2164,14 +2187,17 @@ document.addEventListener('alpine:init', () => {
             }
         
             this.isGprLoading = true;
-            
+
             try {
                 const filterObj = `object = "${this.gprSelectedObject}"`;
                 let projectFilter = filterObj;
-                
-                const projAccessRule = this.buildAccessFilter('projects');
+
+                // Если у пользователя есть право view_all_items в 'gpr', сбрасываем фильтрацию по проектам
+                const gprAccess = this.userAccess['gpr'] || {};
+                let projAccessRule = (gprAccess.view_all_items === true) ? '' : this.buildAccessFilter('projects');
+            
                 if (projAccessRule) projectFilter = `(${filterObj}) && (${projAccessRule})`;
-                
+
                 const projects = await pb.collection('projects').getFullList({ filter: projectFilter, sort: 'name', requestKey: null });
                 const projectIds = projects.map(p => p.id);
             
