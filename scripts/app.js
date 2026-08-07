@@ -1179,17 +1179,6 @@ document.addEventListener('alpine:init', () => {
 
             try {
                 let baseData = JSON.parse(JSON.stringify(this.editingItem));
-
-                this.currentEditSchema.forEach(field => {
-                    if (field.type === 'dynamic_json' && baseData[field.key] && typeof baseData[field.key] === 'object') {
-                        for (let dynKey in baseData[field.key]) {
-                            // Удаляем массивы справочников перед сохранением, чтобы они не летели в базу
-                            if (baseData[field.key][dynKey]._options) {
-                                delete baseData[field.key][dynKey]._options;
-                            }
-                        }
-                    }
-                });
                 
                 if (!this.isCreating) {
                     delete baseData.email;
@@ -1214,6 +1203,15 @@ document.addEventListener('alpine:init', () => {
                         }
                         if (field.type === 'number') {
                             baseData[field.key] = this.parseNumber(baseData[field.key]);
+                        }
+                    }
+                    
+                    if (field.type === 'dynamic_json' && baseData[field.key] && typeof baseData[field.key] === 'object') {
+                        for (let dynKey in baseData[field.key]) {
+                            // Удаляем массивы справочников перед сохранением, чтобы они не летели в базу
+                            if (baseData[field.key][dynKey]._options) delete baseData[field.key][dynKey]._options;
+                            if (baseData[field.key][dynKey]._relationMap) delete baseData[field.key][dynKey]._relationMap;
+                            if (baseData[field.key][dynKey]._rawRecords) delete baseData[field.key][dynKey]._rawRecords;
                         }
                     }
                 });
@@ -1852,7 +1850,8 @@ document.addEventListener('alpine:init', () => {
                                     if (configObj[dynKey].type === 'relation' && configObj[dynKey].sourceCollection) {
                                         try {
                                             const reqOptions = { requestKey: null };
-                                            // Учитываем глобальные права пользователя (чтобы не показать лишнего)
+                                            if (configObj[dynKey].sourceExpand) reqOptions.expand = configObj[dynKey].sourceExpand;
+                                            
                                             const rule = this.buildAccessFilter(configObj[dynKey].sourceCollection);
                                             if (rule) reqOptions.filter = rule;
                                             
@@ -1860,6 +1859,15 @@ document.addEventListener('alpine:init', () => {
                                             const sourceKeys = configObj[dynKey].sourceKeys || ['name'];
                                             
                                             configObj[dynKey]._options = records.map(r => sourceKeys.map(k => resolvePath(r, k)).filter(Boolean).join(' ')).filter(Boolean);
+                                            
+                                            // ДОБАВЛЯЕМ КЭШИРОВАНИЕ ЗАПИСЕЙ ДЛЯ ЭКСПОРТА В WORD
+                                            configObj[dynKey]._rawRecords = records;
+                                            configObj[dynKey]._relationMap = {};
+                                            records.forEach(r => {
+                                                const displayStr = sourceKeys.map(k => resolvePath(r, k)).filter(Boolean).join(' ');
+                                                if (displayStr) configObj[dynKey]._relationMap[displayStr] = r.id;
+                                            });
+
                                             hasChanges = true;
                                         } catch (e) {
                                             console.error('Ошибка загрузки справочника для JSON:', dynKey, e);
@@ -2360,25 +2368,95 @@ document.addEventListener('alpine:init', () => {
 
                 // 4. Собираем данные (плоский объект) для шаблонизатора
                 let templateData = { ...this.editingItem };
+
+                // Универсальная функция для раскрытия ЛЮБЫХ связей
+                const extractRelationData = (keyPrefix, recordId, rawRecords) => {
+                    const rawRecord = rawRecords.find(r => r.id === recordId);
+                    if (rawRecord) {
+                        
+                        // 1. Автоматический перенос базовых полей
+                        // Все поля (name, full_name, city и т.д.) перенесутся с префиксом
+                        for (let prop in rawRecord) {
+                            if (typeof rawRecord[prop] !== 'object') {
+                                templateData[`${keyPrefix}_${prop}`] = rawRecord[prop] || '';
+                            }
+                        }
+
+                        // 2. Раскрываем вложенный ОБЪЕКТ (если мы загрузили Проект, у которого есть expand.object)
+                        if (rawRecord.expand && rawRecord.expand.object) {
+                            const objRecord = rawRecord.expand.object;
+                            for (let prop in objRecord) {
+                                if (typeof objRecord[prop] !== 'object') {
+                                    templateData[`${keyPrefix}_object_${prop}`] = objRecord[prop] || '';
+                                }
+                            }
+                        }
+
+                        // 3. Специфичная логика для КОНТАКТОВ (чтобы удобно выводить ФИО)
+                        if (rawRecord.last_name !== undefined) {
+                            templateData[`${keyPrefix}_fio`] = `${rawRecord.last_name || ''} ${rawRecord.first_name || ''} ${rawRecord.patronymic || ''}`.trim();
+                            
+                            let shortFio = rawRecord.last_name || '';
+                            if (rawRecord.first_name) shortFio += ` ${rawRecord.first_name.charAt(0).toUpperCase()}.`;
+                            if (rawRecord.patronymic) shortFio += `${rawRecord.patronymic.charAt(0).toUpperCase()}.`;
+                            templateData[`${keyPrefix}_short_fio`] = shortFio.trim();
+
+                            templateData[`${keyPrefix}_pos`] = rawRecord.position || '';
+                        }
+                        
+                        // 4. Универсальные данные КОМПАНИИ (для контактов)
+                        if (rawRecord.expand && rawRecord.expand.company) {
+                            const comp = rawRecord.expand.company;
+                            for (let prop in comp) {
+                                if (typeof comp[prop] !== 'object') {
+                                    // Добавляем все поля компании: _org_inn, _org_ogrn, _org_name и т.д.
+                                    templateData[`${keyPrefix}_org_${prop}`] = comp[prop] || ''; 
+                                }
+                            }
+                            // Оставляем короткие теги для удобства и обратной совместимости
+                            templateData[`${keyPrefix}_org`] = comp.name || '';
+                            templateData[`${keyPrefix}_inn`] = comp.inn || '';
+                            templateData[`${keyPrefix}_ogrn`] = comp.ogrn || ''; 
+                            templateData[`${keyPrefix}_address`] = comp.address || '';
+                            templateData[`${keyPrefix}_phone`] = comp.phone || '';
+                        }
+                    }
+                };
+
+                // 4.1. Раскрываем стандартные поля-справочники (Представитель заказчика и т.д.)
+                this.currentEditSchema.forEach(field => {
+                    if (field.type === 'relation' && field._relationMap && field._rawRecords) {
+                        const valStr = this.editingItem[field.key];
+                        if (valStr && field._relationMap[valStr]) {
+                            // Передаем (например: 'customer_rep', 'id_контакта', массив_контактов)
+                            extractRelationData(field.key, field._relationMap[valStr], field._rawRecords);
+                        }
+                    }
+                });
                 
-                // Раскрываем наш Dynamic JSON! Превращаем { cipher: { value: "123" } } в { cipher: "123" }
+                // 4.2. Раскрываем наш Dynamic JSON
                 if (this.editingItem.own_config && typeof this.editingItem.own_config === 'object') {
                     for (let dynKey in this.editingItem.own_config) {
-                        let dynVal = this.editingItem.own_config[dynKey].value || '';
+                        let dynConfig = this.editingItem.own_config[dynKey];
+                        let dynVal = dynConfig.value || '';
                         
-                        // СРАЗУ форматируем даты из JSON для Word
-                        if (this.editingItem.own_config[dynKey].type === 'date' && dynVal) {
+                        if (dynConfig.type === 'date' && dynVal) {
                             const d = new Date(dynVal);
-                            if (!isNaN(d.getTime())) {
-                                dynVal = d.toLocaleDateString('ru-RU');
-                            }
+                            if (!isNaN(d.getTime())) dynVal = d.toLocaleDateString('ru-RU');
                         }
                         
                         templateData[dynKey] = dynVal;
+
+                        // Если это relation внутри JSON (например "Иные лица")
+                        if (dynConfig.type === 'relation' && dynConfig._relationMap && dynConfig._rawRecords && dynVal) {
+                            if (dynConfig._relationMap[dynVal]) {
+                                extractRelationData(dynKey, dynConfig._relationMap[dynVal], dynConfig._rawRecords);
+                            }
+                        }
                     }
                 }
                 
-                // Красиво форматируем обычные даты (start_date, end_date) в формат ДД.ММ.ГГГГ
+                // 4.3 Красиво форматируем обычные даты (start_date, end_date)
                 for (let key in templateData) {
                     const schemaField = this.currentEditSchema.find(f => f.key === key);
                     if (schemaField && schemaField.type === 'date' && templateData[key]) {
@@ -2452,7 +2530,7 @@ document.addEventListener('alpine:init', () => {
         },
         
         /*
-        ЛОГИКА ГРАФИКА ПРОИЗВОДСТВА РАБОТ
+        График производства работ
         */
         gprTimeline: { years: [], months: [], weeks: [] },
             

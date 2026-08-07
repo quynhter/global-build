@@ -82,6 +82,7 @@ const MODELS = {
         expand: ['global_counterparty'],
         fields: [
             { key: 'name', label: 'Название', required: true, type: 'text', width: 'min-w-[200px] max-w-[350px]' },
+            { key: 'city', label: 'Город', required: true, type: 'text', width: 'w-[200px]' },
             { 
                 key: 'global_counterparty', 
                 label: 'Контрагент', 
@@ -110,7 +111,8 @@ const MODELS = {
                 multiple: false,
                 width: 'min-w-[200px] max-w-[400px]' 
             },
-            { key: 'name', label: 'Название', required: true, type: 'text', width: 'min-w-[200px] max-w-[350px]' },
+            { key: 'name', label: 'Шифр проекта', required: true, type: 'text', width: 'w-[200px]' },
+            { key: 'full_name', label: 'Полное наименование', required: true, type: 'text', width: 'min-w-[200px] max-w-[350px]' },
             { 
                 key: 'responsible_users',
                 label: 'Команда проекта',
@@ -624,7 +626,18 @@ const MODELS = {
     },
     'itd': {
         collectionName: 'itd',
-        expand: ['act_type', 'act_type.norm_doc', 'author', 'project', 'project.object'],
+        expand: [
+            'act_type', 
+            'act_type.norm_doc', 
+            'author', 
+            'project', 
+            'project.object', 
+            'customer_rep', 'customer_rep.company', 
+            'designer_rep', 'designer_rep.company', 
+            'contractor_rep', 'contractor_rep.company', 
+            'installer_rep', 'installer_rep.company', 
+            'commissioning_rep', 'commissioning_rep.company'
+        ],
         fields: [
             { 
                 key: 'object_name',
@@ -651,6 +664,7 @@ const MODELS = {
                 required: true, 
                 sourceCollection: 'projects', 
                 sourceKeys: ['name'], 
+                sourceExpand: 'object',
                 dependsOn: 'helper_object', 
                 dependsOnTarget: 'object',  
                 multiple: false,
@@ -679,6 +693,31 @@ const MODELS = {
                 dependsOnTarget: 'norm_doc',  
                 multiple: false,
                 width: 'min-w-[200px] max-w-[300px]'
+            },
+            { 
+                key: 'customer_rep', label: 'Представитель заказчика', type: 'relation', 
+                sourceCollection: 'contacts', sourceExpand: 'company',
+                sourceKeys: ['position', 'expand.company.name', 'last_name', 'first_name'], multiple: false, width: 'w-[250px]'
+            },
+            { 
+                key: 'designer_rep', label: 'Представитель проектной организации', type: 'relation', 
+                sourceCollection: 'contacts', sourceExpand: 'company',
+                sourceKeys: ['position', 'expand.company.name', 'last_name', 'first_name'], multiple: false, width: 'w-[250px]'
+            },
+            { 
+                key: 'contractor_rep', label: 'Представитель генподрядчика', type: 'relation', 
+                sourceCollection: 'contacts', sourceExpand: 'company',
+                sourceKeys: ['position', 'expand.company.name', 'last_name', 'first_name'], multiple: false, width: 'w-[250px]'
+            },
+            { 
+                key: 'installer_rep', label: 'Представитель монтажной организации', type: 'relation', 
+                sourceCollection: 'contacts', sourceExpand: 'company',
+                sourceKeys: ['position', 'expand.company.name', 'last_name', 'first_name'], multiple: false, width: 'w-[250px]'
+            },
+            { 
+                key: 'commissioning_rep', label: 'Представитель пусконаладочной организации', type: 'relation', 
+                sourceCollection: 'contacts', sourceExpand: 'company',
+                sourceKeys: ['position', 'expand.company.name', 'last_name', 'first_name'], multiple: false, width: 'w-[250px]'
             },
             { 
                 key: 'own_config', 
