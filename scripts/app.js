@@ -1618,7 +1618,7 @@ document.addEventListener('alpine:init', () => {
                 }
                 return;
             }
-            
+
             // Проверяем, требует ли форма указания проекта
             const pSchema = this.currentEditSchema.find(f => f.key === 'project');
             const hpSchema = this.currentEditSchema.find(f => f.key === 'helper_project');
@@ -1925,6 +1925,30 @@ document.addEventListener('alpine:init', () => {
         // ==========================================
         // 10. ИМПОРТ И ЭКСПОРТ
         // ==========================================
+        // Универсальная функция генерации DOCX
+        async generateDocx(templatePath, templateData, outFileName) {
+            if (typeof window.PizZip === 'undefined' || typeof window.docxtemplater === 'undefined') {
+                throw new Error("Библиотеки для экспорта DOCX не загружены.");
+            }
+            const response = await fetch(templatePath);
+            if (!response.ok) throw new Error(`Шаблон не найден по пути: ${templatePath}`);
+
+            const blob = await response.blob();
+            const arrayBuffer = await blob.arrayBuffer();
+
+            const zip = new window.PizZip(arrayBuffer); 
+            const doc = new window.docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
+            
+            doc.render(templateData);
+
+            const out = doc.getZip().generate({
+                type: "blob",
+                mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            });
+
+            window.saveAs(out, outFileName);
+        },
+
         async exportData() {
             this.isExporting = true;
             
@@ -1950,40 +1974,11 @@ document.addEventListener('alpine:init', () => {
 
         async handleTemplateExport(config, data) {
             try {
-                // 1. Проверяем, загрузились ли библиотеки
-                if (typeof window.PizZip === 'undefined' || typeof window.docxtemplater === 'undefined') {
-                    throw new Error("Библиотеки для экспорта (PizZip или docxtemplater) еще не загрузились или не подключены.");
-                }
-
-                const response = await fetch(config.template);
-                if (!response.ok) throw new Error('Шаблон не найден по указанному пути');
-
-                const blob = await response.blob();
-                const arrayBuffer = await blob.arrayBuffer();
-
-                // Если в конфиге есть prepareData, прогоняем данные через нее
                 const templateData = config.prepareData ? config.prepareData(data) : { records: data };
-
-                // 2. Используем window. для доступа к глобальным конструкторам
-                const zip = new window.PizZip(arrayBuffer); 
-
-                const doc = new window.docxtemplater(zip, {
-                    paragraphLoop: true,
-                    linebreaks: true,
-                });
-
-                doc.render(templateData);
-
-                const out = doc.getZip().generate({
-                    type: "blob",
-                    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                });
-
-                // saveAs тоже берется из глобальной области (библиотека file-saver)
-                window.saveAs(out, `${MENU_TITLES[this.activeSub]}.docx`);
+                await this.generateDocx(config.template, templateData, `${MENU_TITLES[this.activeSub]}.docx`);
             } catch (error) {
                 console.error("Ошибка экспорта DOCX:", error);
-                this.openDialog('Ошибка', 'Не удалось сгенерировать документ. Проверьте консоль для деталей.', 'alert'); 
+                this.openDialog('Ошибка', 'Не удалось сгенерировать документ: ' + error.message, 'alert'); 
             }
         },
 
@@ -2336,19 +2331,13 @@ document.addEventListener('alpine:init', () => {
             this.isDownloadingAct = true;
 
             try {
-                // 1. Проверяем библиотеки
-                if (typeof window.PizZip === 'undefined' || typeof window.docxtemplater === 'undefined') {
-                    throw new Error("Библиотеки для экспорта DOCX не загружены.");
-                }
-
-                // 2. Ищем путь к шаблону в коллекции act_types
+                // 1. Ищем путь к шаблону
                 let templatePath = '';
                 let actName = 'Акт';
                 
                 const actTypeField = this.currentEditSchema.find(f => f.key === 'act_type');
                 if (actTypeField && actTypeField._rawRecords) {
-                    const actVal = this.editingItem.act_type; // У нас тут текстовое название (напр. "АОСР")
-                    
+                    const actVal = this.editingItem.act_type; 
                     const selectedAct = actTypeField._rawRecords.find(r => {
                         const keys = actTypeField.sourceKeys || ['name'];
                         const resolvePath = (obj, path) => path.split('.').reduce((o, p) => (o ? o[p] : ''), obj);
@@ -2356,104 +2345,87 @@ document.addEventListener('alpine:init', () => {
                     });
                     
                     if (selectedAct) {
-                        templatePath = selectedAct.template_path; // Поле в PocketBase
+                        templatePath = selectedAct.template_path;
                         actName = selectedAct.name;
                     }
                 }
 
                 if (!templatePath) {
-                    this.openDialog('Ошибка', 'Для выбранного типа акта не указан путь к шаблону. Укажите его в коллекции act_types в поле "template_path".', 'alert');
+                    this.openDialog('Ошибка', 'Для выбранного типа акта не указан путь к шаблону (template_path).', 'alert');
                     this.isDownloadingAct = false;
                     return;
                 }
 
-                // 3. Скачиваем .docx файл с сервера
-                const response = await fetch(templatePath);
-                if (!response.ok) throw new Error(`Шаблон не найден по пути: ${templatePath}`);
-
-                const blob = await response.blob();
-                const arrayBuffer = await blob.arrayBuffer();
-
-                // 4. Собираем данные (плоский объект) для шаблонизатора
+                // 2. Базовые данные
                 let templateData = { ...this.editingItem };
 
-                // Универсальная функция для раскрытия ЛЮБЫХ связей
+                // Функция раскрытия связей (остается такой же, как мы делали)
                 const extractRelationData = (keyPrefix, recordId, rawRecords) => {
                     const rawRecord = rawRecords.find(r => r.id === recordId);
                     if (rawRecord) {
-                        
-                        // 1. Автоматический перенос базовых полей
-                        // Все поля (name, full_name, city и т.д.) перенесутся с префиксом
                         for (let prop in rawRecord) {
-                            if (typeof rawRecord[prop] !== 'object') {
-                                templateData[`${keyPrefix}_${prop}`] = rawRecord[prop] || '';
-                            }
+                            if (typeof rawRecord[prop] !== 'object') templateData[`${keyPrefix}_${prop}`] = rawRecord[prop] || '';
                         }
-
-                        // 2. Раскрываем вложенный ОБЪЕКТ (если мы загрузили Проект, у которого есть expand.object)
                         if (rawRecord.expand && rawRecord.expand.object) {
-                            const objRecord = rawRecord.expand.object;
-                            for (let prop in objRecord) {
-                                if (typeof objRecord[prop] !== 'object') {
-                                    templateData[`${keyPrefix}_object_${prop}`] = objRecord[prop] || '';
-                                }
+                            for (let prop in rawRecord.expand.object) {
+                                if (typeof rawRecord.expand.object[prop] !== 'object') templateData[`${keyPrefix}_object_${prop}`] = rawRecord.expand.object[prop] || '';
                             }
                         }
-
-                        // 3. Специфичная логика для КОНТАКТОВ (чтобы удобно выводить ФИО)
                         if (rawRecord.last_name !== undefined) {
                             templateData[`${keyPrefix}_fio`] = `${rawRecord.last_name || ''} ${rawRecord.first_name || ''} ${rawRecord.patronymic || ''}`.trim();
-                            
                             let shortFio = rawRecord.last_name || '';
                             if (rawRecord.first_name) shortFio += ` ${rawRecord.first_name.charAt(0).toUpperCase()}.`;
                             if (rawRecord.patronymic) shortFio += `${rawRecord.patronymic.charAt(0).toUpperCase()}.`;
                             templateData[`${keyPrefix}_short_fio`] = shortFio.trim();
-
                             templateData[`${keyPrefix}_pos`] = rawRecord.position || '';
                         }
-                        
-                        // 4. Универсальные данные КОМПАНИИ (для контактов)
                         if (rawRecord.expand && rawRecord.expand.company) {
                             const comp = rawRecord.expand.company;
                             for (let prop in comp) {
-                                if (typeof comp[prop] !== 'object') {
-                                    // Добавляем все поля компании: _org_inn, _org_ogrn, _org_name и т.д.
-                                    templateData[`${keyPrefix}_org_${prop}`] = comp[prop] || ''; 
-                                }
+                                if (typeof comp[prop] !== 'object') templateData[`${keyPrefix}_org_${prop}`] = comp[prop] || ''; 
                             }
-                            // Оставляем короткие теги для удобства и обратной совместимости
                             templateData[`${keyPrefix}_org`] = comp.name || '';
                             templateData[`${keyPrefix}_inn`] = comp.inn || '';
                             templateData[`${keyPrefix}_ogrn`] = comp.ogrn || ''; 
-                            templateData[`${keyPrefix}_address`] = comp.address || '';
-                            templateData[`${keyPrefix}_phone`] = comp.phone || '';
                         }
                     }
                 };
 
-                // 4.1. Раскрываем стандартные поля-справочники (Представитель заказчика и т.д.)
+                // Раскрываем базовые связи
                 this.currentEditSchema.forEach(field => {
                     if (field.type === 'relation' && field._relationMap && field._rawRecords) {
                         const valStr = this.editingItem[field.key];
-                        if (valStr && field._relationMap[valStr]) {
-                            // Передаем (например: 'customer_rep', 'id_контакта', массив_контактов)
-                            extractRelationData(field.key, field._relationMap[valStr], field._rawRecords);
-                        }
+                        if (valStr && field._relationMap[valStr]) extractRelationData(field.key, field._relationMap[valStr], field._rawRecords);
                     }
                 });
                 
-                // 4.2. Раскрываем наш Dynamic JSON
+                // Раскрываем наш Dynamic JSON
                 if (this.editingItem.own_config && typeof this.editingItem.own_config === 'object') {
                     for (let dynKey in this.editingItem.own_config) {
                         let dynConfig = this.editingItem.own_config[dynKey];
-                        let dynVal = dynConfig.value || '';
+                        let dynVal = dynConfig.value; // Тут может быть строка, число или массив
                         
+                        // Обрабатываем одиночные даты
                         if (dynConfig.type === 'date' && dynVal) {
                             const d = new Date(dynVal);
                             if (!isNaN(d.getTime())) dynVal = d.toLocaleDateString('ru-RU');
+                        } 
+                        // Обрабатываем таблицы с датами внутри
+                        else if (dynConfig.type === 'table' && Array.isArray(dynVal)) {
+                            dynVal = dynVal.map(row => {
+                                let newRow = { ...row };
+                                for (let colKey in dynConfig.columns) {
+                                    if (dynConfig.columns[colKey].type === 'date' && newRow[colKey]) {
+                                        const d = new Date(newRow[colKey]);
+                                        if (!isNaN(d.getTime())) newRow[colKey] = d.toLocaleDateString('ru-RU');
+                                    }
+                                }
+                                return newRow;
+                            });
                         }
                         
-                        templateData[dynKey] = dynVal;
+                        // Сохраняем в итоговый массив (массив объектов для таблицы или строку для обычных)
+                        templateData[dynKey] = (dynVal !== undefined && dynVal !== null) ? dynVal : '';
 
                         // Если это relation внутри JSON (например "Иные лица")
                         if (dynConfig.type === 'relation' && dynConfig._relationMap && dynConfig._rawRecords && dynVal) {
@@ -2464,30 +2436,41 @@ document.addEventListener('alpine:init', () => {
                     }
                 }
                 
-                // 4.3 Красиво форматируем обычные даты (start_date, end_date)
                 for (let key in templateData) {
                     const schemaField = this.currentEditSchema.find(f => f.key === key);
                     if (schemaField && schemaField.type === 'date' && templateData[key]) {
                         const d = new Date(templateData[key]);
-                        if (!isNaN(d.getTime())) {
-                            templateData[key] = d.toLocaleDateString('ru-RU');
-                        }
+                        if (!isNaN(d.getTime())) templateData[key] = d.toLocaleDateString('ru-RU');
                     }
                 }
 
-                // 5. Генерируем Word-документ
-                const zip = new window.PizZip(arrayBuffer); 
-                const doc = new window.docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
-                
-                doc.render(templateData);
+                // ==========================================
+                // 3. АВТОМАТИЧЕСКАЯ ТАБЛИЦА (Ведомость ЖРМ)
+                // ==========================================
+                const projectField = this.currentEditSchema.find(f => f.key === 'project');
+                if (projectField && projectField._relationMap && this.editingItem.project) {
+                    const projectId = projectField._relationMap[this.editingItem.project];
+                    if (projectId) {
+                        const facts = await pb.collection('facts').getFullList({
+                            filter: `material.project = "${projectId}"`, // Ищем ЖРМ по выбранному проекту
+                            expand: 'material',
+                            sort: 'date',
+                            requestKey: null
+                        });
+                        
+                        // Формируем массив для шаблонизатора docxtemplater
+                        templateData.facts_table = facts.map((f, index) => ({
+                            npp: index + 1,
+                            name: f.expand?.material?.name || 'Неизвестно',
+                            unit: f.expand?.material?.unit || '',
+                            quantity: f.quantity || 0,
+                            date: f.date ? new Date(f.date).toLocaleDateString('ru-RU') : ''
+                        }));
+                    }
+                }
 
-                const out = doc.getZip().generate({
-                    type: "blob",
-                    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                });
-
-                // Вызываем скачивание
-                window.saveAs(out, `${actName}_${new Date().toLocaleDateString('ru-RU')}.docx`);
+                // 4. Отправляем в унифицированную функцию
+                await this.generateDocx(templatePath, templateData, `${actName}_${new Date().toLocaleDateString('ru-RU')}.docx`);
                 
             } catch (error) {
                 console.error("Ошибка сборки акта:", error);
