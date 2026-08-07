@@ -673,6 +673,304 @@ document.addEventListener('alpine:init', () => {
             }
         },
 
+        // График производства работ
+
+        gprTimeline: { years: [], months: [], weeks: [] },
+            
+        formatNumber(val) {
+            const num = Number(val) || 0;
+            if (num === 0) return '0';
+            return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 3 }).format(num);
+        },
+
+        getFactColorClass(remainder, plan) {
+            const r = Number(remainder) || 0;
+            const p = Number(plan) || 0;
+            // Если план есть и факт равен плану или превышает его
+            if (p > 0 && Math.abs(r) <= 0.001) return 'bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-400 group-hover/workrow:bg-emerald-200 dark:group-hover/workrow:bg-emerald-800';
+            // Если факт превысил план значительно
+            if (p > 0 && r < -0.001) return 'bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-400 group-hover/workrow:bg-amber-200 dark:group-hover/workrow:bg-amber-800';
+            // Нейтральный цвет
+            return 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 group-hover/workrow:bg-slate-100 dark:group-hover/workrow:bg-slate-800';
+        },
+
+        getRemColorClass(remainder) {
+            const r = Number(remainder) || 0;
+            // Остаток ушел в минус
+            if (r < -0.001) return 'bg-rose-100 dark:bg-rose-900 text-rose-800 dark:text-rose-400 group-hover/workrow:bg-rose-200 dark:group-hover/workrow:bg-rose-800';
+            // Положительный остаток или ноль
+            return 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 group-hover/workrow:bg-slate-100 dark:group-hover/workrow:bg-slate-800';
+        },
+        
+        toggleDisplayMode() {
+            this.gprDisplayMode = this.gprDisplayMode === 'number' ? 'percent' : 'number';
+        },
+        
+        formatGprValue(val, plan) {
+            const numVal = Number(val) || 0;
+            if (this.gprDisplayMode === 'percent') {
+                const numPlan = Number(plan) || 0;
+                if (numPlan === 0) return '0%';
+                return Math.round((numVal / numPlan) * 100) + '%';
+            }
+            return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 3 }).format(numVal);
+        },
+
+        generateTimeline(facts, plans) {
+            let minDate = new Date();
+            let maxDate = new Date();
+            maxDate.setMonth(maxDate.getMonth() + 3); 
+        
+            let hasDates = false;
+            
+            const checkDate = (dString) => {
+                if (!dString) return;
+                let d = new Date(dString);
+                if (isNaN(d.getTime())) return;
+                if (!hasDates || d < minDate) { minDate = d; hasDates = true; }
+                if (d > maxDate) { maxDate = d; }
+            };
+
+            facts.forEach(f => checkDate(f.date));
+            plans.forEach(p => checkDate(p.week_monday));
+        
+            minDate = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
+            maxDate = new Date(maxDate.getFullYear(), maxDate.getMonth() + 1, 0);
+        
+            const weeks = [];
+            const months = [];
+            const years = [];
+        
+            let current = new Date(minDate);
+            let day = current.getDay(), diff = current.getDate() - day + (day === 0 ? -6 : 1);
+            current = new Date(current.setDate(diff));
+        
+            while (current <= maxDate) {
+                let weekStart = new Date(current);
+                let weekEnd = new Date(current);
+                weekEnd.setDate(weekEnd.getDate() + 6);
+        
+                let midWeek = new Date(weekStart);
+                midWeek.setDate(midWeek.getDate() + 3);
+        
+                let y = midWeek.getFullYear();
+                let m = midWeek.getMonth();
+                let mName = midWeek.toLocaleString('ru-RU', { month: 'long' });
+                mName = mName.charAt(0).toUpperCase() + mName.slice(1);
+        
+                let wId = `${weekStart.getFullYear()}-${(weekStart.getMonth()+1).toString().padStart(2, '0')}-${weekStart.getDate().toString().padStart(2, '0')}`;
+                let wLabel = `${weekStart.getDate().toString().padStart(2, '0')}.${(weekStart.getMonth()+1).toString().padStart(2, '0')}`;
+        
+                weeks.push({ 
+                    id: wId, 
+                    label: wLabel, 
+                    year: y, 
+                    month: m, 
+                    monthName: mName,
+                    start: weekStart.getTime(),
+                    end: weekEnd.getTime()
+                });
+        
+                current.setDate(current.getDate() + 7);
+            }
+        
+            let lastYear = null;
+            let lastMonth = null;
+        
+            weeks.forEach(w => {
+                if (!lastYear || lastYear.value !== w.year) {
+                    lastYear = { value: w.year, colspan: 0 };
+                    years.push(lastYear);
+                }
+                lastYear.colspan++;
+        
+                let monthId = `${w.year}-${w.month}`;
+                if (!lastMonth || lastMonth.id !== monthId) {
+                    lastMonth = { id: monthId, label: w.monthName, colspan: 0 };
+                    months.push(lastMonth);
+                }
+                lastMonth.colspan++;
+            });
+        
+            this.gprTimeline = { years, months, weeks };
+        },
+
+        async savePlan(projectId, groupId, weekId, weekData) {
+            if (!this.hasAccess('update')) {
+                this.openDialog('Ошибка доступа', 'У вас нет прав на редактирование графика!', 'alert');
+                return;
+            }
+
+            let val = this.parseNumber(weekData.plan);
+            
+            try {
+                if (weekData.planId) {
+                    if (val !== null && val > 0) {
+                        await pb.collection('plans').update(weekData.planId, { quantity: val });
+                    } else {
+                        await pb.collection('plans').delete(weekData.planId);
+                        weekData.planId = null;
+                        weekData.plan = '';
+                    }
+                } else {
+                    if (val !== null && val > 0) {
+                        const record = await pb.collection('plans').create({
+                            project: projectId,
+                            group: groupId,
+                            week_monday: weekId,
+                            quantity: val
+                        });
+                        weekData.planId = record.id;
+                    } else {
+                        weekData.plan = ''; 
+                    }
+                }
+            } catch (err) {
+                console.error("Ошибка сохранения плана:", err);
+                this.openDialog('Ошибка', 'Не удалось сохранить план в базу данных.', 'alert');
+            }
+        },
+        
+        async loadGprObjects() {
+            try {
+                if (this.currentUser.role !== 'admin' && this.allowedObjectIds.length === 0) {
+                    await this.cacheUserAccess();
+                }
+            
+                // Если у пользователя есть право view_all_items в 'gpr', сбрасываем фильтрацию по объектам
+                const gprAccess = this.userAccess['gpr'] || {};
+                let accessRule = (gprAccess.view_all_items === true) ? '' : this.buildAccessFilter('objects');
+            
+                const reqOptions = { sort: 'name', requestKey: null };
+
+                if (accessRule && accessRule !== 'id="NONE"') {
+                    reqOptions.filter = accessRule;
+                } else if (accessRule === 'id="NONE"') {
+                    this.gprObjects = [];
+                    return; 
+                }
+            
+                this.gprObjects = await pb.collection('objects').getFullList(reqOptions);
+            } catch (err) {
+                console.error("Ошибка загрузки объектов ГПР", err);
+            }
+        },
+        
+        async loadGprData() {
+            if (!this.gprSelectedObject) {
+                this.gprData = [];
+                return;
+            }
+        
+            this.isGprLoading = true;
+
+            try {
+                const filterObj = `object = "${this.gprSelectedObject}"`;
+                let projectFilter = filterObj;
+
+                // Если у пользователя есть право view_all_items в 'gpr', сбрасываем фильтрацию по проектам
+                const gprAccess = this.userAccess['gpr'] || {};
+                let projAccessRule = (gprAccess.view_all_items === true) ? '' : this.buildAccessFilter('projects');
+            
+                if (projAccessRule) projectFilter = `(${filterObj}) && (${projAccessRule})`;
+
+                const projects = await pb.collection('projects').getFullList({ filter: projectFilter, sort: 'name', requestKey: null });
+                const projectIds = projects.map(p => p.id);
+            
+                if (projectIds.length === 0) {
+                    this.gprData = [];
+                    this.isGprLoading = false;
+                    return;
+                }
+            
+                const groupFilter = projectIds.map(id => `projects ~ "${id}"`).join(' || ');
+                const groups = await pb.collection('groups').getFullList({ filter: `(${groupFilter})`, sort: 'name', requestKey: null });
+            
+                const matFilter = projectIds.map(id => `project="${id}"`).join(' || ');
+                const materials = await pb.collection('materials').getFullList({ filter: `(${matFilter})`, sort: 'name', requestKey: null });
+
+                const facts = await pb.collection('facts').getFullList({
+                    filter: projectIds.map(id => `material.project="${id}"`).join(' || '),
+                    requestKey: null
+                });
+
+                const plans = await pb.collection('plans').getFullList({
+                    filter: projectIds.map(id => `project="${id}"`).join(' || '),
+                    requestKey: null
+                });
+
+                this.generateTimeline(facts, plans);
+            
+                this.gprData = projects.map(project => {
+                    const projectMaterials = materials.filter(m => m.project === project.id);
+                    const projectPlans = plans.filter(p => p.project === project.id);
+                    
+                    const projectGroups = groups.filter(g => g.projects && g.projects.includes(project.id)).map(group => {
+                        const groupMats = projectMaterials.filter(m => m.group === group.id);
+                        const groupPlans = projectPlans.filter(p => p.group === group.id);
+                        
+                        const unitsSet = new Set();
+                        let totalPlan = 0;
+                        let totalFact = 0;
+                    
+                        groupMats.forEach(m => {
+                            if (m.unit && String(m.unit).trim() !== '') unitsSet.add(String(m.unit).trim());
+                            totalPlan += (Number(m.quantity_spec) || 0);
+                        });
+
+                        const groupFacts = facts.filter(f => groupMats.some(m => m.id === f.material));
+                        
+                        const timeline = {};
+                        this.gprTimeline.weeks.forEach(w => {
+                            timeline[w.id] = { plan: '', fact: 0, planId: null };
+                        });
+
+                        groupPlans.forEach(p => {
+                            if (p.week_monday && timeline[p.week_monday]) {
+                                timeline[p.week_monday].plan = p.quantity;
+                                timeline[p.week_monday].planId = p.id;
+                            }
+                        });
+
+                        groupFacts.forEach(f => {
+                            if (!f.date) return;
+                            let fDate = new Date(f.date).getTime();
+                            totalFact += (Number(f.quantity) || 0);
+        
+                            const targetWeek = this.gprTimeline.weeks.find(w => fDate >= w.start && fDate <= w.end + 86399999);
+                            if (targetWeek) {
+                                timeline[targetWeek.id].fact += (Number(f.quantity) || 0);
+                            }
+                        });
+                    
+                        const units = Array.from(unitsSet).join(', ') || '';
+                    
+                        return {
+                            id: group.id,
+                            name: group.name,
+                            units: units,
+                            plan: totalPlan || 0,
+                            fact: totalFact,
+                            remainder: totalPlan - totalFact,
+                            timeline: timeline
+                        };
+                    });
+                
+                    return {
+                        id: project.id,
+                        name: project.name,
+                        expanded: true,
+                        groups: projectGroups.sort((a, b) => a.name.localeCompare(b.name))
+                    };
+                });
+            
+            } catch (err) {
+                console.error("Ошибка формирования данных ГПР", err);
+            } finally {
+                this.isGprLoading = false;
+            }
+        },
+
         /*
         *** 6. Поиск, фильтры и сортировка ***
         */
@@ -2528,306 +2826,6 @@ document.addEventListener('alpine:init', () => {
             }
 
             return value;
-        },
-        
-        /*
-        *** График производства работ ***
-        */
-
-        gprTimeline: { years: [], months: [], weeks: [] },
-            
-        formatNumber(val) {
-            const num = Number(val) || 0;
-            if (num === 0) return '0';
-            return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 3 }).format(num);
-        },
-
-        getFactColorClass(remainder, plan) {
-            const r = Number(remainder) || 0;
-            const p = Number(plan) || 0;
-            // Если план есть и факт равен плану или превышает его
-            if (p > 0 && Math.abs(r) <= 0.001) return 'bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-400 group-hover/workrow:bg-emerald-200 dark:group-hover/workrow:bg-emerald-800';
-            // Если факт превысил план значительно
-            if (p > 0 && r < -0.001) return 'bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-400 group-hover/workrow:bg-amber-200 dark:group-hover/workrow:bg-amber-800';
-            // Нейтральный цвет
-            return 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 group-hover/workrow:bg-slate-100 dark:group-hover/workrow:bg-slate-800';
-        },
-
-        getRemColorClass(remainder) {
-            const r = Number(remainder) || 0;
-            // Остаток ушел в минус
-            if (r < -0.001) return 'bg-rose-100 dark:bg-rose-900 text-rose-800 dark:text-rose-400 group-hover/workrow:bg-rose-200 dark:group-hover/workrow:bg-rose-800';
-            // Положительный остаток или ноль
-            return 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 group-hover/workrow:bg-slate-100 dark:group-hover/workrow:bg-slate-800';
-        },
-        
-        toggleDisplayMode() {
-            this.gprDisplayMode = this.gprDisplayMode === 'number' ? 'percent' : 'number';
-        },
-        
-        formatGprValue(val, plan) {
-            const numVal = Number(val) || 0;
-            if (this.gprDisplayMode === 'percent') {
-                const numPlan = Number(plan) || 0;
-                if (numPlan === 0) return '0%';
-                return Math.round((numVal / numPlan) * 100) + '%';
-            }
-            return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 3 }).format(numVal);
-        },
-
-        generateTimeline(facts, plans) {
-            let minDate = new Date();
-            let maxDate = new Date();
-            maxDate.setMonth(maxDate.getMonth() + 3); 
-        
-            let hasDates = false;
-            
-            const checkDate = (dString) => {
-                if (!dString) return;
-                let d = new Date(dString);
-                if (isNaN(d.getTime())) return;
-                if (!hasDates || d < minDate) { minDate = d; hasDates = true; }
-                if (d > maxDate) { maxDate = d; }
-            };
-
-            facts.forEach(f => checkDate(f.date));
-            plans.forEach(p => checkDate(p.week_monday));
-        
-            minDate = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
-            maxDate = new Date(maxDate.getFullYear(), maxDate.getMonth() + 1, 0);
-        
-            const weeks = [];
-            const months = [];
-            const years = [];
-        
-            let current = new Date(minDate);
-            let day = current.getDay(), diff = current.getDate() - day + (day === 0 ? -6 : 1);
-            current = new Date(current.setDate(diff));
-        
-            while (current <= maxDate) {
-                let weekStart = new Date(current);
-                let weekEnd = new Date(current);
-                weekEnd.setDate(weekEnd.getDate() + 6);
-        
-                let midWeek = new Date(weekStart);
-                midWeek.setDate(midWeek.getDate() + 3);
-        
-                let y = midWeek.getFullYear();
-                let m = midWeek.getMonth();
-                let mName = midWeek.toLocaleString('ru-RU', { month: 'long' });
-                mName = mName.charAt(0).toUpperCase() + mName.slice(1);
-        
-                let wId = `${weekStart.getFullYear()}-${(weekStart.getMonth()+1).toString().padStart(2, '0')}-${weekStart.getDate().toString().padStart(2, '0')}`;
-                let wLabel = `${weekStart.getDate().toString().padStart(2, '0')}.${(weekStart.getMonth()+1).toString().padStart(2, '0')}`;
-        
-                weeks.push({ 
-                    id: wId, 
-                    label: wLabel, 
-                    year: y, 
-                    month: m, 
-                    monthName: mName,
-                    start: weekStart.getTime(),
-                    end: weekEnd.getTime()
-                });
-        
-                current.setDate(current.getDate() + 7);
-            }
-        
-            let lastYear = null;
-            let lastMonth = null;
-        
-            weeks.forEach(w => {
-                if (!lastYear || lastYear.value !== w.year) {
-                    lastYear = { value: w.year, colspan: 0 };
-                    years.push(lastYear);
-                }
-                lastYear.colspan++;
-        
-                let monthId = `${w.year}-${w.month}`;
-                if (!lastMonth || lastMonth.id !== monthId) {
-                    lastMonth = { id: monthId, label: w.monthName, colspan: 0 };
-                    months.push(lastMonth);
-                }
-                lastMonth.colspan++;
-            });
-        
-            this.gprTimeline = { years, months, weeks };
-        },
-
-        async savePlan(projectId, groupId, weekId, weekData) {
-            if (!this.hasAccess('update')) {
-                this.openDialog('Ошибка доступа', 'У вас нет прав на редактирование графика!', 'alert');
-                return;
-            }
-
-            let val = this.parseNumber(weekData.plan);
-            
-            try {
-                if (weekData.planId) {
-                    if (val !== null && val > 0) {
-                        await pb.collection('plans').update(weekData.planId, { quantity: val });
-                    } else {
-                        await pb.collection('plans').delete(weekData.planId);
-                        weekData.planId = null;
-                        weekData.plan = '';
-                    }
-                } else {
-                    if (val !== null && val > 0) {
-                        const record = await pb.collection('plans').create({
-                            project: projectId,
-                            group: groupId,
-                            week_monday: weekId,
-                            quantity: val
-                        });
-                        weekData.planId = record.id;
-                    } else {
-                        weekData.plan = ''; 
-                    }
-                }
-            } catch (err) {
-                console.error("Ошибка сохранения плана:", err);
-                this.openDialog('Ошибка', 'Не удалось сохранить план в базу данных.', 'alert');
-            }
-        },
-        
-        async loadGprObjects() {
-            try {
-                if (this.currentUser.role !== 'admin' && this.allowedObjectIds.length === 0) {
-                    await this.cacheUserAccess();
-                }
-            
-                // Если у пользователя есть право view_all_items в 'gpr', сбрасываем фильтрацию по объектам
-                const gprAccess = this.userAccess['gpr'] || {};
-                let accessRule = (gprAccess.view_all_items === true) ? '' : this.buildAccessFilter('objects');
-            
-                const reqOptions = { sort: 'name', requestKey: null };
-
-                if (accessRule && accessRule !== 'id="NONE"') {
-                    reqOptions.filter = accessRule;
-                } else if (accessRule === 'id="NONE"') {
-                    this.gprObjects = [];
-                    return; 
-                }
-            
-                this.gprObjects = await pb.collection('objects').getFullList(reqOptions);
-            } catch (err) {
-                console.error("Ошибка загрузки объектов ГПР", err);
-            }
-        },
-        
-        async loadGprData() {
-            if (!this.gprSelectedObject) {
-                this.gprData = [];
-                return;
-            }
-        
-            this.isGprLoading = true;
-
-            try {
-                const filterObj = `object = "${this.gprSelectedObject}"`;
-                let projectFilter = filterObj;
-
-                // Если у пользователя есть право view_all_items в 'gpr', сбрасываем фильтрацию по проектам
-                const gprAccess = this.userAccess['gpr'] || {};
-                let projAccessRule = (gprAccess.view_all_items === true) ? '' : this.buildAccessFilter('projects');
-            
-                if (projAccessRule) projectFilter = `(${filterObj}) && (${projAccessRule})`;
-
-                const projects = await pb.collection('projects').getFullList({ filter: projectFilter, sort: 'name', requestKey: null });
-                const projectIds = projects.map(p => p.id);
-            
-                if (projectIds.length === 0) {
-                    this.gprData = [];
-                    this.isGprLoading = false;
-                    return;
-                }
-            
-                const groupFilter = projectIds.map(id => `projects ~ "${id}"`).join(' || ');
-                const groups = await pb.collection('groups').getFullList({ filter: `(${groupFilter})`, sort: 'name', requestKey: null });
-            
-                const matFilter = projectIds.map(id => `project="${id}"`).join(' || ');
-                const materials = await pb.collection('materials').getFullList({ filter: `(${matFilter})`, sort: 'name', requestKey: null });
-
-                const facts = await pb.collection('facts').getFullList({
-                    filter: projectIds.map(id => `material.project="${id}"`).join(' || '),
-                    requestKey: null
-                });
-
-                const plans = await pb.collection('plans').getFullList({
-                    filter: projectIds.map(id => `project="${id}"`).join(' || '),
-                    requestKey: null
-                });
-
-                this.generateTimeline(facts, plans);
-            
-                this.gprData = projects.map(project => {
-                    const projectMaterials = materials.filter(m => m.project === project.id);
-                    const projectPlans = plans.filter(p => p.project === project.id);
-                    
-                    const projectGroups = groups.filter(g => g.projects && g.projects.includes(project.id)).map(group => {
-                        const groupMats = projectMaterials.filter(m => m.group === group.id);
-                        const groupPlans = projectPlans.filter(p => p.group === group.id);
-                        
-                        const unitsSet = new Set();
-                        let totalPlan = 0;
-                        let totalFact = 0;
-                    
-                        groupMats.forEach(m => {
-                            if (m.unit && String(m.unit).trim() !== '') unitsSet.add(String(m.unit).trim());
-                            totalPlan += (Number(m.quantity_spec) || 0);
-                        });
-
-                        const groupFacts = facts.filter(f => groupMats.some(m => m.id === f.material));
-                        
-                        const timeline = {};
-                        this.gprTimeline.weeks.forEach(w => {
-                            timeline[w.id] = { plan: '', fact: 0, planId: null };
-                        });
-
-                        groupPlans.forEach(p => {
-                            if (p.week_monday && timeline[p.week_monday]) {
-                                timeline[p.week_monday].plan = p.quantity;
-                                timeline[p.week_monday].planId = p.id;
-                            }
-                        });
-
-                        groupFacts.forEach(f => {
-                            if (!f.date) return;
-                            let fDate = new Date(f.date).getTime();
-                            totalFact += (Number(f.quantity) || 0);
-        
-                            const targetWeek = this.gprTimeline.weeks.find(w => fDate >= w.start && fDate <= w.end + 86399999);
-                            if (targetWeek) {
-                                timeline[targetWeek.id].fact += (Number(f.quantity) || 0);
-                            }
-                        });
-                    
-                        const units = Array.from(unitsSet).join(', ') || '';
-                    
-                        return {
-                            id: group.id,
-                            name: group.name,
-                            units: units,
-                            plan: totalPlan || 0,
-                            fact: totalFact,
-                            remainder: totalPlan - totalFact,
-                            timeline: timeline
-                        };
-                    });
-                
-                    return {
-                        id: project.id,
-                        name: project.name,
-                        expanded: true,
-                        groups: projectGroups.sort((a, b) => a.name.localeCompare(b.name))
-                    };
-                });
-            
-            } catch (err) {
-                console.error("Ошибка формирования данных ГПР", err);
-            } finally {
-                this.isGprLoading = false;
-            }
         },
 
         /*
