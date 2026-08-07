@@ -674,7 +674,7 @@ document.addEventListener('alpine:init', () => {
         },
 
         /*
-        *** Поиск, фильтры и сортировка ***
+        *** 6. Поиск, фильтры и сортировка ***
         */
 
         createSearchRegex(query) {
@@ -808,7 +808,7 @@ document.addEventListener('alpine:init', () => {
         },
 
         /*
-        *** Пагинация ***
+        *** 7. Пагинация ***
         */
 
         async prevPage() {
@@ -856,7 +856,7 @@ document.addEventListener('alpine:init', () => {
         },
 
         /*
-        *** База данных и права доступа ***
+        *** 8. База данных и права доступа ***
         */
 
         async fetchData() {
