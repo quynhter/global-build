@@ -2,7 +2,7 @@ document.addEventListener('alpine:init', () => {
     Alpine.data('sidebarMenu', () => ({
         
         /*
-        
+        Состояние
         */
         activeMenu: localStorage.getItem('activeMenu') || null,
         activeSub: localStorage.getItem('activeSub') || null,
@@ -34,7 +34,7 @@ document.addEventListener('alpine:init', () => {
         showTableSetting: false, showItemEdit: false, showDeleteWindow: false, showImportWindow: false,
         selectedRows: [], userSortKey: null, userSortDir: null,
         editingItem: null, isCreating: false, isLoading: false, loadingEditId: null,
-        isExporting: false, isSavingAccess: false,
+        isExporting: false, isSavingAccess: false, isDownloadingAct: false,
         originalGroupedIds: [],
         importData: [], importColumns: [], importMapping: {},
         
@@ -978,6 +978,8 @@ document.addEventListener('alpine:init', () => {
                         const initialItem = {};
                         field.fields.forEach(sf => { initialItem[sf.key] = sf.multiple ? [] : ''; });
                         this.editingItem[field.key] = [initialItem];
+                    } else if (field.type === 'dynamic_json') {
+                        this.editingItem[field.key] = {};
                     } else {
                         this.editingItem[field.key] = field.multiple ? [] : '';
                     }
@@ -986,6 +988,9 @@ document.addEventListener('alpine:init', () => {
                 this.editingItem = JSON.parse(JSON.stringify(row));
                 
                 schema.forEach(field => {
+                    if (field.type === 'dynamic_json' && (!this.editingItem[field.key] || typeof this.editingItem[field.key] !== 'object')) {
+                        this.editingItem[field.key] = {};
+                    }
                     if (field.type === 'date' && this.editingItem[field.key]) {
                         this.editingItem[field.key] = this.editingItem[field.key].substring(0, 10);
                     }
@@ -1174,6 +1179,17 @@ document.addEventListener('alpine:init', () => {
 
             try {
                 let baseData = JSON.parse(JSON.stringify(this.editingItem));
+
+                this.currentEditSchema.forEach(field => {
+                    if (field.type === 'dynamic_json' && baseData[field.key] && typeof baseData[field.key] === 'object') {
+                        for (let dynKey in baseData[field.key]) {
+                            // Удаляем массивы справочников перед сохранением, чтобы они не летели в базу
+                            if (baseData[field.key][dynKey]._options) {
+                                delete baseData[field.key][dynKey]._options;
+                            }
+                        }
+                    }
+                });
                 
                 if (!this.isCreating) {
                     delete baseData.email;
@@ -1803,6 +1819,82 @@ document.addEventListener('alpine:init', () => {
                 }
             });
 
+            schema.forEach(field => {
+                if (field.type === 'dynamic_json' && field.dependsOn && field.sourceConfigField) {
+                    const parentKey = field.dependsOn; // 'act_type'
+                    const parentField = schema.find(f => f.key === parentKey);
+                    
+                    if (parentField && parentField._rawRecords) {
+                        const selectedVal = this.editingItem[parentKey];
+                        
+                        const keys = parentField.sourceKeys || ['name'];
+                        const resolvePath = (obj, path) => path.split('.').reduce((o, p) => (o ? o[p] : ''), obj);
+                        
+                        // Ищем, какой акт сейчас выбран
+                        let selectedRecord = parentField._rawRecords.find(r => {
+                            const displayStr = keys.map(k => resolvePath(r, k)).filter(Boolean).join(' ');
+                            return displayStr === selectedVal;
+                        });
+
+                        if (selectedRecord && selectedRecord[field.sourceConfigField]) {
+                            let templateConfig = selectedRecord[field.sourceConfigField];
+                            if (typeof templateConfig === 'string') {
+                                try { templateConfig = JSON.parse(templateConfig); } catch (e) { templateConfig = {}; }
+                            }
+                            
+                            const trackerKey = '_current_id_' + field.key;
+                            const newActId = selectedRecord.id;
+
+                            // АСИНХРОННАЯ ЗАГРУЗКА СПРАВОЧНИКОВ ДЛЯ JSON
+                            const loadRelationsForConfig = async (configObj) => {
+                                let hasChanges = false;
+                                for (let dynKey in configObj) {
+                                    if (configObj[dynKey].type === 'relation' && configObj[dynKey].sourceCollection) {
+                                        try {
+                                            const reqOptions = { requestKey: null };
+                                            // Учитываем глобальные права пользователя (чтобы не показать лишнего)
+                                            const rule = this.buildAccessFilter(configObj[dynKey].sourceCollection);
+                                            if (rule) reqOptions.filter = rule;
+                                            
+                                            const records = await pb.collection(configObj[dynKey].sourceCollection).getFullList(reqOptions);
+                                            const sourceKeys = configObj[dynKey].sourceKeys || ['name'];
+                                            
+                                            configObj[dynKey]._options = records.map(r => sourceKeys.map(k => resolvePath(r, k)).filter(Boolean).join(' ')).filter(Boolean);
+                                            hasChanges = true;
+                                        } catch (e) {
+                                            console.error('Ошибка загрузки справочника для JSON:', dynKey, e);
+                                            configObj[dynKey]._options = [];
+                                        }
+                                    }
+                                }
+                                // Принудительно дергаем реактивность Alpine, чтобы выпадающие списки обновились
+                                if (hasChanges) {
+                                    this.editingItem[field.key] = { ...configObj };
+                                }
+                            };
+
+                            if (!isInitial) {
+                                if (this.editingItem[trackerKey] !== newActId) {
+                                    this.editingItem[field.key] = JSON.parse(JSON.stringify(templateConfig));
+                                    this.editingItem[trackerKey] = newActId;
+                                    loadRelationsForConfig(this.editingItem[field.key]);
+                                }
+                            } else {
+                                 this.editingItem[trackerKey] = newActId;
+                                 if (!this.editingItem[field.key] || Object.keys(this.editingItem[field.key]).length === 0) {
+                                     this.editingItem[field.key] = JSON.parse(JSON.stringify(templateConfig));
+                                 }
+                                 // Загружаем списки даже если открываем уже заполненную карточку
+                                 loadRelationsForConfig(this.editingItem[field.key]);
+                            }
+                        } else if (!isInitial) {
+                             this.editingItem[field.key] = {};
+                             this.editingItem['_current_id_' + field.key] = null;
+                        }
+                    }
+                }
+            });
+
             if (!isInitial) {
                 this.checkAndMergeByDate();
             }
@@ -2175,6 +2267,92 @@ document.addEventListener('alpine:init', () => {
                 window.XLSX.writeFile(workbook, fileName);
             } catch (e) {
                 console.error("Не удалось сгенерировать файл с ошибками", e);
+            }
+        },
+
+        async downloadSingleAct() {
+            if (this.isDownloadingAct) return;
+            this.isDownloadingAct = true;
+
+            try {
+                // 1. Проверяем библиотеки
+                if (typeof window.PizZip === 'undefined' || typeof window.docxtemplater === 'undefined') {
+                    throw new Error("Библиотеки для экспорта DOCX не загружены.");
+                }
+
+                // 2. Ищем путь к шаблону в коллекции act_types
+                let templatePath = '';
+                let actName = 'Акт';
+                
+                const actTypeField = this.currentEditSchema.find(f => f.key === 'act_type');
+                if (actTypeField && actTypeField._rawRecords) {
+                    const actVal = this.editingItem.act_type; // У нас тут текстовое название (напр. "АОСР")
+                    
+                    const selectedAct = actTypeField._rawRecords.find(r => {
+                        const keys = actTypeField.sourceKeys || ['name'];
+                        const resolvePath = (obj, path) => path.split('.').reduce((o, p) => (o ? o[p] : ''), obj);
+                        return keys.map(k => resolvePath(r, k)).filter(Boolean).join(' ') === actVal;
+                    });
+                    
+                    if (selectedAct) {
+                        templatePath = selectedAct.template_path; // Поле в PocketBase
+                        actName = selectedAct.name;
+                    }
+                }
+
+                if (!templatePath) {
+                    this.openDialog('Ошибка', 'Для выбранного типа акта не указан путь к шаблону. Укажите его в коллекции act_types в поле "template_path".', 'alert');
+                    this.isDownloadingAct = false;
+                    return;
+                }
+
+                // 3. Скачиваем .docx файл с сервера
+                const response = await fetch(templatePath);
+                if (!response.ok) throw new Error(`Шаблон не найден по пути: ${templatePath}`);
+
+                const blob = await response.blob();
+                const arrayBuffer = await blob.arrayBuffer();
+
+                // 4. Собираем данные (плоский объект) для шаблонизатора
+                let templateData = { ...this.editingItem };
+                
+                // Раскрываем наш Dynamic JSON! Превращаем { cipher: { value: "123" } } в { cipher: "123" }
+                if (this.editingItem.own_config && typeof this.editingItem.own_config === 'object') {
+                    for (let dynKey in this.editingItem.own_config) {
+                        templateData[dynKey] = this.editingItem.own_config[dynKey].value || '';
+                    }
+                }
+                
+                // Красиво форматируем обычные даты (start_date, end_date) в формат ДД.ММ.ГГГГ
+                for (let key in templateData) {
+                    const schemaField = this.currentEditSchema.find(f => f.key === key);
+                    if (schemaField && schemaField.type === 'date' && templateData[key]) {
+                        const d = new Date(templateData[key]);
+                        if (!isNaN(d.getTime())) {
+                            templateData[key] = d.toLocaleDateString('ru-RU');
+                        }
+                    }
+                }
+
+                // 5. Генерируем Word-документ
+                const zip = new window.PizZip(arrayBuffer); 
+                const doc = new window.docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
+                
+                doc.render(templateData);
+
+                const out = doc.getZip().generate({
+                    type: "blob",
+                    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                });
+
+                // Вызываем скачивание
+                window.saveAs(out, `${actName}_${new Date().toLocaleDateString('ru-RU')}.docx`);
+                
+            } catch (error) {
+                console.error("Ошибка сборки акта:", error);
+                this.openDialog('Ошибка', 'Не удалось сгенерировать акт: ' + error.message, 'alert');
+            } finally {
+                this.isDownloadingAct = false;
             }
         },
 

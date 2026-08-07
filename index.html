@@ -250,6 +250,7 @@
             </div>
 
             <div x-show="openGroup === 'journals'" class="flex flex-col gap-2 w-full">
+                <button @click="selectSub('itd')" :class="[subBtn, activeSub === 'itd' ? subBtnActive : subBtnNormal]">Исполнительная документация</button>
                 <button @click="selectSub('inj')" :class="[subBtn, activeSub === 'inj' ? subBtnActive : subBtnNormal]">Журнал входного контроля</button>
                 <button @click="selectSub('work_progress_report')" :class="[subBtn, activeSub === 'work_progress_report' ? subBtnActive : subBtnNormal]">Журнал расхода материалов</button>
                 <button @click="selectSub('doc_status_log')" :class="[subBtn, activeSub === 'doc_status_log' ? subBtnActive : subBtnNormal]">Журнал движения ИТД</button>
@@ -823,11 +824,7 @@
                                                             <input :type="subField.type" x-model="item[subField.key]" :class="anyInput" placeholder="Введите значение...">
                                                         </template>
                                                         <template x-if="subField.type === 'textarea'">
-                                                            <textarea 
-                                                                rows="4" 
-                                                                x-model="item[subField.key]" 
-                                                                :class="[anyInput, 'h-[104px] resize-y thin-scroll transition-none']" 
-                                                                placeholder="Введите текст..."></textarea>
+                                                            <textarea rows="4" x-model="item[subField.key]" :class="[anyInput, 'h-[104px] resize-y thin-scroll transition-none']" placeholder="Введите текст..."></textarea>
                                                         </template>
                                                         <template x-if="subField.type === 'number'">
                                                             <input type="text" x-model="item[subField.key]" @focus="if(subField.format !== 'raw') item[subField.key] = parseNumber(item[subField.key])" @blur="if(subField.format !== 'raw') item[subField.key] = formatValue(parseNumber(item[subField.key]), subField.format)" :class="anyInput" placeholder="Введите число...">
@@ -858,6 +855,71 @@
                                 </div>
                             </template>
 
+                            <template x-if="field.type === 'dynamic_json'">
+                                <div class="flex flex-col gap-4 mt-2 p-4 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-inner w-full">
+                                
+                                    <!-- Безопасная проверка: отображаем заглушку, если данных нет или это не объект -->
+                                    <template x-if="!editingItem[field.key] || typeof editingItem[field.key] !== 'object' || Object.keys(editingItem[field.key]).length === 0">
+                                        <span class="text-xs text-slate-500 dark:text-slate-400">Тип акта не выбран или для него не заданы специфичные поля</span>
+                                    </template>
+                                
+                                    <template x-if="editingItem[field.key] && typeof editingItem[field.key] === 'object' && Object.keys(editingItem[field.key]).length > 0">
+                                        <div class="flex flex-col gap-4">
+                                            <!-- Перебираем ключи JSON объекта -->
+                                            <template x-for="dynKey in Object.keys(editingItem[field.key])" :key="dynKey">
+                                                <div class="flex flex-col gap-1 w-full">
+                                                    <span class="text-sm font-medium text-slate-600 dark:text-slate-300" x-text="editingItem[field.key][dynKey].title || dynKey"></span>
+                                                
+                                                    <!-- Текст и Дата -->
+                                                    <template x-if="['text', 'date'].includes(editingItem[field.key][dynKey].type)">
+                                                        <input :type="editingItem[field.key][dynKey].type" 
+                                                               x-model="editingItem[field.key][dynKey].value" 
+                                                               :class="anyInput" 
+                                                               placeholder="Введите значение...">
+                                                    </template>
+                                                
+                                                    <!-- Текстовая область -->
+                                                    <template x-if="editingItem[field.key][dynKey].type === 'textarea'">
+                                                        <textarea rows="3" 
+                                                                  x-model="editingItem[field.key][dynKey].value" 
+                                                                  :class="[anyInput, 'resize-y thin-scroll h-auto']" 
+                                                                  placeholder="Введите текст..."></textarea>
+                                                    </template>
+                                                
+                                                    <!-- Число -->
+                                                    <template x-if="editingItem[field.key][dynKey].type === 'number'">
+                                                        <input type="number" step="any"
+                                                               x-model="editingItem[field.key][dynKey].value" 
+                                                               :class="anyInput" 
+                                                               placeholder="Введите число...">
+                                                    </template>
+                                                
+                                                    <!-- Relation (Связь со справочником) -->
+                                                    <template x-if="editingItem[field.key][dynKey].type === 'relation'">
+                                                        <div class="flex flex-col gap-1 w-full">
+                                                            <input type="text" 
+                                                                   :list="'list-dyn-' + field.key + '-' + dynKey" 
+                                                                   x-model="editingItem[field.key][dynKey].value" 
+                                                                   :class="[anyInput, (editingItem[field.key][dynKey]._options && editingItem[field.key][dynKey].value && !editingItem[field.key][dynKey]._options.includes(editingItem[field.key][dynKey].value)) ? 'border-red-500 focus:border-red-500 focus:ring-red-200' : 'border-slate-200 dark:border-slate-700 focus:border-slate-400 dark:focus:border-slate-500']"
+                                                                   placeholder="Начните вводить...">
+                                                            <datalist :id="'list-dyn-' + field.key + '-' + dynKey">
+                                                                <template x-if="editingItem[field.key][dynKey]._options">
+                                                                    <template x-for="opt in editingItem[field.key][dynKey]._options" :key="opt">
+                                                                        <option :value="opt"></option>
+                                                                    </template>
+                                                                </template>
+                                                            </datalist>
+                                                            <!-- Защита от ввода несуществующих данных -->
+                                                            <span x-show="editingItem[field.key][dynKey]._options && editingItem[field.key][dynKey].value && !editingItem[field.key][dynKey]._options.includes(editingItem[field.key][dynKey].value)" x-cloak class="text-xs text-red-500">Ввод сторонних значений запрещен!</span>
+                                                        </div>
+                                                    </template>
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </template>
+                                </div>
+                            </template>
+
                         </div>
                     </template>
                 </template>
@@ -873,7 +935,15 @@
         </div>
 
         <!-- Подвал окна -->
-        <div class="flex flex-row justify-end gap-2 p-4 border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+        <div class="flex flex-row justify-end items-center gap-2 p-4 border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+            
+            <!-- Кнопка скачивания (только для ИТД) -->
+            <button x-show="activeSub === 'itd'" @click="downloadSingleAct()" :disabled="isDownloadingAct" :class="[anyBtn, 'bg-white dark:bg-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 px-6 disabled:opacity-70 disabled:cursor-not-allowed flex items-center gap-2 mr-auto']">
+                <i x-show="isDownloadingAct" x-cloak class="fi fi-sr-refresh animate-spin flex justify-center items-center"></i>
+                <i x-show="!isDownloadingAct" class="fi fi-sr-document-signed flex justify-center items-center"></i>
+                <span x-text="isDownloadingAct ? 'Сборка...' : 'Скачать'"></span>
+            </button>
+
             <button @click="showItemEdit = false" :disabled="isSaving" :class="[anyBtn, 'px-4 disabled:opacity-70 disabled:cursor-not-allowed']">Отмена</button>
             <button @click="saveEdit()" :disabled="isSaving" :class="[anyBtn, 'bg-white dark:bg-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 px-6 disabled:opacity-70 disabled:cursor-not-allowed flex items-center gap-2']">
                 <i x-show="isSaving" x-cloak class="fi fi-sr-refresh animate-spin flex justify-center items-center"></i>

@@ -15,7 +15,8 @@ const MENU_TITLES = {
     'doc_status_log': 'Журнал движения ИТД',
     'general_work_log': 'Общий журнал работ',
     'gpr': 'График производства работ',
-    'feed': 'Лента событий'
+    'feed': 'Лента событий',
+    'itd': 'Исполнительная документация',
 };
 
 const MODELS = {
@@ -620,7 +621,87 @@ const MODELS = {
                 readonly: true
             }
         ]
-    }
+    },
+    'itd': {
+        collectionName: 'itd',
+        expand: ['act_type', 'act_type.norm_doc', 'author', 'project', 'project.object'],
+        fields: [
+            { 
+                key: 'object_name',
+                label: 'Объект', 
+                type: 'nested',
+                path: 'expand.project.expand.object.name',
+                width: 'min-w-[150px] max-w-[300px]'
+            },
+            { 
+                key: 'helper_object',
+                label: 'Фильтр по Объекту', 
+                type: 'relation',
+                sourceCollection: 'objects',
+                sourceKeys: ['name'],
+                virtual: true, 
+                visible: false, 
+                autoFillPath: 'expand.project.expand.object.name', 
+                multiple: false
+            },
+            {
+                key: 'project', 
+                label: 'Проект', 
+                type: 'relation', 
+                required: true, 
+                sourceCollection: 'projects', 
+                sourceKeys: ['name'], 
+                dependsOn: 'helper_object', 
+                dependsOnTarget: 'object',  
+                multiple: false,
+                width: 'min-w-[150px] max-w-[200px]'
+            },
+            { key: 'date', label: 'Дата', required: true, type: 'date', width: 'w-[200px]', format: 'date' },
+            { 
+                key: 'helper_norm_doc',
+                label: 'Фильтр по Нормативной документации', 
+                type: 'relation',
+                sourceCollection: 'normative_docs', 
+                sourceKeys: ['name'],
+                virtual: true, 
+                visible: false, 
+                autoFillPath: 'expand.act_type.expand.norm_doc.name',
+                multiple: false
+            },
+            {
+                key: 'act_type', 
+                label: 'Тип акта', 
+                required: true, 
+                type: 'relation', 
+                sourceCollection: 'act_types',
+                sourceKeys: ['name'], 
+                dependsOn: 'helper_norm_doc', 
+                dependsOnTarget: 'norm_doc',  
+                multiple: false,
+                width: 'min-w-[200px] max-w-[300px]'
+            },
+            { 
+                key: 'own_config', 
+                label: 'Специфичные данные акта', 
+                type: 'dynamic_json',
+                dependsOn: 'act_type',
+                sourceConfigField: 'config',
+                showInEdit: true,
+                visible: false, 
+                user_visible: false 
+            },
+            { 
+                key: 'author', 
+                label: 'Автор', 
+                type: 'relation', 
+                sourceCollection: 'users', 
+                sourceKeys: ['position', 'last_name', 'first_name'],
+                multiple: false,
+                width: 'w-[200px]',
+                readonly: true
+            }
+        ]
+    },
 };
 
 const EXPORT_CONFIG = {
@@ -739,6 +820,7 @@ const buildEditConfig = () => {
                             sourceExpand: sf.sourceExpand || null,
                             dependsOn: sf.dependsOn || null,
                             dependsOnTarget: sf.dependsOnTarget || null,
+                            sourceConfigField: f.sourceConfigField || null,
                             format: sf.format || 'raw',
                             required: sf.required || false,
                             options: sf.options || [],
@@ -760,7 +842,8 @@ const buildEditConfig = () => {
                     sourceKeys: f.sourceKeys || null,
                     sourceExpand: f.sourceExpand || null,
                     dependsOn: f.dependsOn || null,
-                    dependsOnTarget: f.dependsOnTarget || null, 
+                    dependsOnTarget: f.dependsOnTarget || null,
+                    sourceConfigField: f.sourceConfigField || null,
                     virtual: f.virtual || false, 
                     autoFillPath: f.autoFillPath || null, 
                     format: f.format || 'raw',
