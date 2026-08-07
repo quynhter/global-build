@@ -25,7 +25,8 @@ const MODELS = {
         expand: [], 
         fields: [
             { key: 'name', label: 'Название организации', required: true, type: 'text', width: 'min-w-[200px] max-w-[400px]' },
-            { key: 'inn', label: 'ИНН компании', type: 'text', width: 'w-[160px]' },
+            { key: 'inn', label: 'ИНН', type: 'text', width: 'w-[160px]' },
+            { key: 'ogrn', label: 'ОГРН', type: 'text', width: 'w-[160px]' },
             { key: 'email', label: 'Email', type: 'text', width: 'w-[180px]' },
             { key: 'phone', label: 'Телефон', type: 'text', width: 'w-[180px]' },
             { key: 'id', label: 'ID', type: 'text', width: 'w-[150px]', hideOnCreate: true, locked: true }
