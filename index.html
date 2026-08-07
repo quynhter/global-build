@@ -285,7 +285,7 @@
                 <span class="text-nowrap" x-text="isExporting ? 'Экспорт...' : 'Экспорт'"></span>
             </button>
 
-            <button x-show="activeSub != null && isAuth === true" @click.stop="openEdit(null)" :disabled="loadingEditId === 'new'" :class="[anyBtn, 'disabled:opacity-70 disabled:cursor-not-allowed']">
+            <button x-show="activeSub != null && activeSub !== 'gpr' && isAuth === true" @click.stop="openEdit(null)" :disabled="loadingEditId === 'new'" :class="[anyBtn, 'disabled:opacity-70 disabled:cursor-not-allowed']">
                 <span x-show="loadingEditId !== 'new'" class="fi fi-sr-plus-small flex items-center"></span>
                 <i x-show="loadingEditId === 'new'" x-cloak class="fi fi-sr-refresh animate-spin flex items-center"></i>
                 <span class="text-nowrap" x-text="loadingEditId === 'new' ? 'Загрузка...' : 'Новая запись'"></span>
