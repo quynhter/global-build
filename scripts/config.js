@@ -627,6 +627,7 @@ const MODELS = {
     },
     'itd': {
         collectionName: 'itd',
+        preventDateMerge: true,
         expand: [
             'act_type', 
             'act_type.norm_doc', 

@@ -1611,6 +1611,14 @@ document.addEventListener('alpine:init', () => {
             const currentModel = MODELS[this.activeSub];
             if (!collectionName || !currentModel) return;
 
+            if (currentModel.preventDateMerge) {
+                if (this.isCreating) {
+                    this.editingItem._existingRecordId = null;
+                    this.originalGroupedIds = [];
+                }
+                return;
+            }
+            
             // Проверяем, требует ли форма указания проекта
             const pSchema = this.currentEditSchema.find(f => f.key === 'project');
             const hpSchema = this.currentEditSchema.find(f => f.key === 'helper_project');
