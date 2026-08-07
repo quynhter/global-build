@@ -634,6 +634,7 @@ const MODELS = {
             'project', 
             'project.object', 
             'customer_rep', 'customer_rep.company', 
+            'techsupervision_rep', 'techsupervision_rep.company', 
             'designer_rep', 'designer_rep.company', 
             'contractor_rep', 'contractor_rep.company', 
             'installer_rep', 'installer_rep.company', 
