@@ -852,7 +852,7 @@ const buildEditConfig = () => {
                     user_visible: f.user_visible !== false,
                     hideOnEdit: f.hideOnEdit || false,
                     hideOnCreate: f.hideOnCreate || false,
-                    locked: f.locked || f.showInEdit || false,
+                    locked: f.locked || (f.showInEdit && f.type !== 'dynamic_json') || false,
                     compute: f.compute || null, 
                     formula: f.formula || null, 
                     _rawRecords: [] 

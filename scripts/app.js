@@ -1997,9 +1997,6 @@ document.addEventListener('alpine:init', () => {
                         // Значение текста (которое мы обычно видим в таблице)
                         values.push(`"${String(val).replace(/"/g, '""')}"`);
                         
-                        // Пытаемся достать оригинальный ID из сырых данных (если он там есть)
-                        // В PocketBase сырые ID обычно хранятся в самом поле до того, как мы их отформатируем.
-                        // Если в dataSources уже лежат текстовые значения, попробуем достать ID из expand.
                         let idVal = '';
                         const currentModel = MODELS[this.activeSub];
                         const fieldDef = currentModel.fields.find(f => f.key === c.key);
@@ -2011,11 +2008,14 @@ document.addEventListener('alpine:init', () => {
                                 idVal = row.expand[c.key].id || '';
                             }
                         } else if (typeof row[c.key] === 'string' && row[c.key].length === 15 && !row[c.key].includes(' ')) {
-                             // Если значение в поле похоже на оригинальный 15-значный ID PocketBase
                              idVal = row[c.key];
                         }
                         
                         values.push(`"${String(idVal).replace(/"/g, '""')}"`);
+                    } else if (c.type === 'dynamic_json') {
+                        // Преобразуем JSON в строку для CSV
+                        let jsonStr = row[c.key] ? JSON.stringify(row[c.key]) : '';
+                        values.push(`"${jsonStr.replace(/"/g, '""')}"`);
                     } else {
                         values.push(`"${String(val).replace(/"/g, '""')}"`);
                     }
@@ -2131,12 +2131,14 @@ document.addEventListener('alpine:init', () => {
                         
                         relationMaps[field.key] = {
                             byText: {},
-                            byId: {} 
+                            byId: {},
+                            records: {}
                         };
                         records.forEach(r => {
                             const displayStr = keys.map(k => resolvePath(r, k)).filter(Boolean).join(' ');
                             if (displayStr) relationMaps[field.key].byText[String(displayStr).trim()] = r.id;
                             relationMaps[field.key].byId[r.id] = r.id; 
+                            relationMaps[field.key].records[r.id] = r;
                         });
                     } catch(e) {
                         console.error("Не удалось загрузить справочник для импорта: ", field.label);
@@ -2194,12 +2196,55 @@ document.addEventListener('alpine:init', () => {
                                         }
                                         val = resolved;
                                     }
-                                } 
+                                }
+                                else if (field.type === 'dynamic_json') {
+                                    try {
+                                        let parsed = typeof val === 'string' ? JSON.parse(val) : val;
+                                        val = typeof parsed === 'object' && parsed !== null ? parsed : {};
+                                    } catch (e) {
+                                        console.warn('Некорректный JSON при импорте:', val);
+                                        val = {};
+                                    }
+                                }
                                 else {
                                     val = String(val).trim();
                                 }
                                 
                                 recordData[field.key] = val;
+                            }
+                        }
+
+                        const dynFields = this.currentImportSchema.filter(f => f.type === 'dynamic_json');
+                        for (let dynField of dynFields) {
+                            if (recordData[dynField.key] && recordData[dynField.dependsOn]) {
+                                const parentId = recordData[dynField.dependsOn];
+                                const parentRelMap = relationMaps[dynField.dependsOn];
+                                if (parentRelMap && parentRelMap.records[parentId]) {
+                                    const parentRecord = parentRelMap.records[parentId];
+                                    let rawCfg = parentRecord[dynField.sourceConfigField];
+                                    if (rawCfg) {
+                                        let template = typeof rawCfg === 'string' ? JSON.parse(rawCfg) : rawCfg;
+                                        let importedData = recordData[dynField.key];
+                                        let merged = JSON.parse(JSON.stringify(template));
+                                        
+                                        for (let k in importedData) {
+                                            if (merged[k]) {
+                                                // Поддерживаем как плоский JSON из Excel {"cipher": "123"}, так и полную структуру
+                                                if (typeof importedData[k] !== 'object') {
+                                                    merged[k].value = importedData[k]; 
+                                                } else if (importedData[k].value !== undefined) {
+                                                    merged[k].value = importedData[k].value; 
+                                                }
+                                                
+                                                // Если тип поля - дата, и из Excel пришло число, конвертируем
+                                                if (merged[k].type === 'date' && typeof merged[k].value === 'number') {
+                                                    merged[k].value = new Date(Math.round((merged[k].value - 25569) * 86400 * 1000)).toISOString().substring(0, 10);
+                                                }
+                                            }
+                                        }
+                                        recordData[dynField.key] = merged;
+                                    }
+                                }
                             }
                         }
 
@@ -2319,7 +2364,17 @@ document.addEventListener('alpine:init', () => {
                 // Раскрываем наш Dynamic JSON! Превращаем { cipher: { value: "123" } } в { cipher: "123" }
                 if (this.editingItem.own_config && typeof this.editingItem.own_config === 'object') {
                     for (let dynKey in this.editingItem.own_config) {
-                        templateData[dynKey] = this.editingItem.own_config[dynKey].value || '';
+                        let dynVal = this.editingItem.own_config[dynKey].value || '';
+                        
+                        // СРАЗУ форматируем даты из JSON для Word
+                        if (this.editingItem.own_config[dynKey].type === 'date' && dynVal) {
+                            const d = new Date(dynVal);
+                            if (!isNaN(d.getTime())) {
+                                dynVal = d.toLocaleDateString('ru-RU');
+                            }
+                        }
+                        
+                        templateData[dynKey] = dynVal;
                     }
                 }
                 
