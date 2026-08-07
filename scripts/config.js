@@ -701,6 +701,11 @@ const MODELS = {
                 sourceKeys: ['position', 'expand.company.name', 'last_name', 'first_name'], multiple: false, width: 'w-[250px]'
             },
             { 
+                key: 'techsupervision_rep', label: 'Представитель технадзора заказчика', type: 'relation', 
+                sourceCollection: 'contacts', sourceExpand: 'company',
+                sourceKeys: ['position', 'expand.company.name', 'last_name', 'first_name'], multiple: false, width: 'w-[250px]'
+            },
+            { 
                 key: 'designer_rep', label: 'Представитель проектной организации', type: 'relation', 
                 sourceCollection: 'contacts', sourceExpand: 'company',
                 sourceKeys: ['position', 'expand.company.name', 'last_name', 'first_name'], multiple: false, width: 'w-[250px]'
