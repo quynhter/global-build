@@ -250,11 +250,11 @@
             </div>
 
             <div x-show="openGroup === 'journals'" class="flex flex-col gap-2 w-full">
-                <button @click="selectSub('itd')" :class="[subBtn, activeSub === 'itd' ? subBtnActive : subBtnNormal]">Исполнительная документация</button>
+                <button @click="selectSub('general_work_log')" :class="[subBtn, activeSub === 'general_work_log' ? subBtnActive : subBtnNormal]">Общий журнал работ</button>
                 <button @click="selectSub('inj')" :class="[subBtn, activeSub === 'inj' ? subBtnActive : subBtnNormal]">Журнал входного контроля</button>
                 <button @click="selectSub('work_progress_report')" :class="[subBtn, activeSub === 'work_progress_report' ? subBtnActive : subBtnNormal]">Журнал расхода материалов</button>
+                <button @click="selectSub('itd')" :class="[subBtn, activeSub === 'itd' ? subBtnActive : subBtnNormal]">Исполнительная документация</button>
                 <button @click="selectSub('doc_status_log')" :class="[subBtn, activeSub === 'doc_status_log' ? subBtnActive : subBtnNormal]">Журнал движения ИТД</button>
-                <button @click="selectSub('general_work_log')" :class="[subBtn, activeSub === 'general_work_log' ? subBtnActive : subBtnNormal]">Общий журнал работ</button>
             </div>
 
             <div x-show="openGroup === 'graphics'" class="flex flex-col gap-2 w-full">
