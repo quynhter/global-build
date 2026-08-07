@@ -2,8 +2,9 @@ document.addEventListener('alpine:init', () => {
     Alpine.data('sidebarMenu', () => ({
         
         /*
-        Состояние
+        *** 1. Состояния ***
         */
+
         activeMenu: localStorage.getItem('activeMenu') || null,
         activeSub: localStorage.getItem('activeSub') || null,
         openGroup: localStorage.getItem('openGroup') || null,
@@ -53,9 +54,10 @@ document.addEventListener('alpine:init', () => {
         isGprLoading: false,
         gprDisplayMode: 'number', // Может быть 'number' или 'percent'
 
-        // ==========================================
-        // 2. ВЫЧИСЛЯЕМЫЕ СВОЙСТВА (GETTERS)
-        // ==========================================
+        /*
+        *** 2. Вычисляемые свойства, Getters ***
+        */
+
         get userAccess() {
             let ga = this.currentUser?.global_access;
             if (!ga) return {};
@@ -119,7 +121,7 @@ document.addEventListener('alpine:init', () => {
             });
             return flatSchema;
         },
-        
+
         get userFullName() {
             const u = this.currentUser;
             const fio = [u.last_name, u.first_name, u.patronymic].filter(Boolean).join(' ');
@@ -244,9 +246,10 @@ document.addEventListener('alpine:init', () => {
             return data;
         },
 
-        // ==========================================
-        // 3. ИНИЦИАЛИЗАЦИЯ (LIFECYCLE)
-        // ==========================================
+        /*
+        *** 3. Инициализация, Lifecycle ***
+        */
+
         init() {
             if (this.isDark) document.documentElement.classList.add('dark');
             const appLoader = document.getElementById('app-loader');
@@ -315,9 +318,10 @@ document.addEventListener('alpine:init', () => {
             }
         },
 
-        // ==========================================
-        // 4. АВТОРИЗАЦИЯ И ПРАВА ДОСТУПА
-        // ==========================================
+        /*
+        *** 4. Авторизация и права доступа ***
+        */
+
         async login() {
             if (this.isLoggingIn) return; // Блокируем повторные клики
             
@@ -591,9 +595,9 @@ document.addEventListener('alpine:init', () => {
             }
         },
 
-        // ==========================================
-        // 5. ИНТЕРФЕЙС, НАВИГАЦИЯ И ДИАЛОГИ
-        // ==========================================
+        /*
+        *** 5. Интерфейс, навигация и диалоги ***
+        */
 
         openDialog(title, message, type = 'alert', onConfirm = null, onCancel = null) {
             this.dialog = { show: true, title, message, type, onConfirm, onCancel, isLoading: false };
@@ -669,9 +673,10 @@ document.addEventListener('alpine:init', () => {
             }
         },
 
-        // ==========================================
-        // 6. ПОИСК, ФИЛЬТРЫ И СОРТИРОВКА
-        // ==========================================
+        /*
+        *** Поиск, фильтры и сортировка ***
+        */
+
         createSearchRegex(query) {
             if (!query) return /(?:)/;
             const regexStr = String(query).split('').map(char => {
@@ -802,9 +807,10 @@ document.addEventListener('alpine:init', () => {
             this.currentPage = 1;
         },
 
-        // ==========================================
-        // 7. ПАГИНАЦИЯ
-        // ==========================================
+        /*
+        *** Пагинация ***
+        */
+
         async prevPage() {
             if (this.currentPage <= 1 || this.isPaginatingLeft || this.isPaginatingRight) return;
             
@@ -849,9 +855,10 @@ document.addEventListener('alpine:init', () => {
             }
         },
 
-        // ==========================================
-        // 8. БАЗА ДАННЫХ И CRUD
-        // ==========================================
+        /*
+        *** База данных и права доступа ***
+        */
+
         async fetchData() {
             if (!this.activeSub) return;
             const collectionName = this.collectionMap[this.activeSub]; 
@@ -1753,9 +1760,10 @@ document.addEventListener('alpine:init', () => {
             }
         },
 
-        // ==========================================
-        // 9. ЛОГИКА ФОРМ И СВЯЗЕЙ (RELATIONS & GROUPS)
-        // ==========================================
+        /*
+        *** 9. Логика форм и связей ***
+        */
+
         addRepeatingGroupItem(field) {
             if (!this.editingItem[field.key]) this.editingItem[field.key] = [];
             const newItem = {};
@@ -1922,9 +1930,10 @@ document.addEventListener('alpine:init', () => {
             return !options.includes(value);
         },
 
-        // ==========================================
-        // 10. ИМПОРТ И ЭКСПОРТ
-        // ==========================================
+        /*
+        *** 10. Импорт и экспорт ***
+        */
+
         // Универсальная функция генерации DOCX
         async generateDocx(templatePath, templateData, outFileName) {
             if (typeof window.PizZip === 'undefined' || typeof window.docxtemplater === 'undefined') {
@@ -2480,9 +2489,10 @@ document.addEventListener('alpine:init', () => {
             }
         },
 
-        // ==========================================
-        // 11. УТИЛИТЫ И ФОРМАТИРОВАНИЕ
-        // ==========================================
+        /*
+        *** 11. Утилиты и форматирование ***
+        */
+
         parseNumber(value) {
             if (value === null || value === undefined || value === '') return null;
             if (typeof value === 'number') return value;
@@ -2521,8 +2531,9 @@ document.addEventListener('alpine:init', () => {
         },
         
         /*
-        График производства работ
+        *** График производства работ ***
         */
+
         gprTimeline: { years: [], months: [], weeks: [] },
             
         formatNumber(val) {
@@ -2818,10 +2829,11 @@ document.addEventListener('alpine:init', () => {
                 this.isGprLoading = false;
             }
         },
-        
-        // ==========================================
-        // 12. СТИЛИ (TAILWIND)
-        // ==========================================
+
+        /*
+        *** 12. Стили ***
+        */
+
         mainBtn: 'box-border flex flex-col p-1 text-slate-500 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 outline-none transition-colors',
         subBtn: 'box-border flex items-center px-3 py-1.5 text-md text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-700/60 rounded-lg outline-none w-full text-left transition-colors duration-150',
         subBtnNormal: 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-700/60',
